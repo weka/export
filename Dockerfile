@@ -15,13 +15,9 @@ WORKDIR $BASEDIR
 COPY export $BASEDIR
 COPY export.yml $BASEDIR
 COPY collector.py $BASEDIR
-COPY circular.py $BASEDIR
-COPY signals.py $BASEDIR
-COPY sthreads.py $BASEDIR
-COPY wekaapi.py $BASEDIR
-COPY wekacluster.py $BASEDIR
 COPY lokilogs.py $BASEDIR
-COPY wekatime.py $BASEDIR
+RUN mkdir $BASEDIR/wekalib
+COPY wekalib/* $BASEDIR/wekalib/
 
 RUN addgroup -S -g $ID $USER &&\
     adduser -S -h $BASEDIR -u $ID -G $USER $USER && \

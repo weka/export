@@ -586,8 +586,10 @@ class wekaCollector(object):
         #            ['cluster','host_name','host_role','node_id','node_role','category','stat','unit']
         #
         # yes, I know it's convoluted... it was hard to write, so it *should* be hard to read. ;)
+        #print(wekadata)
         log.debug(f"io stats cluster={cluster.name}")
         for category, stat_dict in self.get_weka_stat_list().items():
+            print(f"category={category}")
             for stat, nodelist in wekadata[category].items():
                 unit = stat_dict[stat]
                 for node in nodelist:

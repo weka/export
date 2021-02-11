@@ -117,28 +117,27 @@ if __name__ == '__main__':
     #sublog = logging.getLogger( "signals" )
     #sublog.setLevel(loglevel)
 
-    # configure logging in wekacluster module
-    sublog = logging.getLogger( "wekacluster" )
-    sublog.setLevel(logging.INFO)
-
     # configure logging in collector module
-    sublog = logging.getLogger( "collector" )
-    sublog.setLevel(logging.INFO)
+    logging.getLogger( "collector" ).setLevel(logging.INFO)
+
+    # configure logging in wekalib module (default for all)
+    logging.getLogger( "wekalib" ).setLevel(logging.ERROR)
 
     # configure logging in wekaapi module
-    sublog = logging.getLogger( "wekaapi" )
-    sublog.setLevel(logging.DEBUG)
+    logging.getLogger( "wekalib.wekaapi" ).setLevel(logging.ERROR)
 
     # configure logging in sthreads module
-    sublog = logging.getLogger( "sthreads" )
-    sublog.setLevel(logging.ERROR)
+    logging.getLogger( "wekalib.sthreads" ).setLevel(logging.ERROR)
+
+    # configure logging in wekacluster module
+    logging.getLogger( "wekalib.wekacluster" ).setLevel(logging.DEBUG)
+
 
     # configure logging in lokilogs module
-    sublog = logging.getLogger( "lokilogs" )
-    sublog.setLevel(logging.INFO)
+    logging.getLogger( "lokilogs" ).setLevel(logging.INFO)
 
     # configure logging in circular module
-    logging.getLogger("circular").setLevel(logging.INFO)
+    #logging.getLogger("wekalib.circular").setLevel(logging.INFO)
 
     # configure logging in urllib3 module
     logging.getLogger("urllib3").setLevel(logging.ERROR)
