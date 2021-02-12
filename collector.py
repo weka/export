@@ -21,6 +21,7 @@ import json
 from wekalib.wekacluster import WekaCluster
 from wekalib.wekaapi import WekaApi
 from wekalib.sthreads import simul_threads
+from wekalib.wekatime import wekatime_to_datetime
 
 #class WekaIOHistogram(Histogram):
 #    def multi_observe( self, iosize, value ):
@@ -254,7 +255,7 @@ class wekaCollector(object):
             #    pass
             #yield GaugeMetricFamily('weka_collect_timepercall', 'Average Time per api call', value=avetime)
             #log.info(f"status returned. total time = {elapsed} {self.api_stats['num_calls']} api calls made, ave time per call={avetime}")
-            log.info(f"status returned. total time = {elapsed} {self.api_stats['num_calls']} api calls made")
+            log.info(f"status returned. total time = {round(elapsed,2)}s {self.api_stats['num_calls']} api calls made. {time.asctime()}")
 
     # runs in a thread, so args comes in as a dict
     def call_api( self, cluster, metric, category, args ):
@@ -618,9 +619,11 @@ class wekaCollector(object):
                             try:
                                 if category == 'ops_nfs':
                                     log.debug( "ops_nfs is: {} {}".format(stat, node["stat_value"] ) )
-                                metric_objs['weka_stats_gauge'].add_metric(labelvalues, node["stat_value"])
+                                metric_objs['weka_stats_gauge'].add_metric(labelvalues, node["stat_value"],timestamp=wekatime_to_datetime(node['timestamp']).timestamp())
+                                #metric_objs['weka_stats_gauge'].add_metric(labelvalues, node["stat_value"])
+                                #log.error(f"weka timestamp = {node['timestamp']},{wekatime_to_datetime(node['timestamp']).timestamp()}, now={datetime.datetime.now().timestamp()}")
                             except:
-                                #track = traceback.format_exc()
+                                print(f"{traceback.format_exc()}")
                                 #print(track)
                                 log.error( "error processing io stats for cluster {}".format(str(cluster)) )
                         else:   
