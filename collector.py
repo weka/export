@@ -47,7 +47,7 @@ log = getLogger(__name__)
 # makes life easier
 def parse_sizes_values_post38( values ):  # returns list of tuples of [(iosize,value),(iosize,value),...], and their sum
     # example input: [{'value': 2474458, 'start_range': 4096, 'end_range': 8192}]  - a list, NOT a string
-    log.debug(f"value_string={values}, type={type(values)}")
+    #log.debug(f"value_string={values}, type={type(values)}")
     gsum = 0
     stat_list=[]
     
@@ -61,7 +61,7 @@ def parse_sizes_values_post38( values ):  # returns list of tuples of [(iosize,v
 # makes life easier
 def parse_sizes_values_pre38( value_string ):  # returns list of tuples of [(iosize,value),(iosize,value),...], and their sum
     # example input: "[32768..65536] 19486, [65536..131072] 1.57837e+06"
-    log.debug(f"value_string={value_string}, type={type(value_string)}")
+    #log.debug(f"value_string={value_string}, type={type(value_string)}")
     gsum = 0
     stat_list=[]
     values_list = value_string.split( ", " ) # should be "[32768..65536] 19486","[65536..131072] 1.57837e+06"
@@ -269,7 +269,14 @@ class wekaCollector(object):
             else:
                 if not category in self.clusterdata[str(cluster)]:
                     self.clusterdata[str(cluster)][category] = {}
-                self.clusterdata[str(cluster)][category][metric] = cluster.call_api( method=method, parms=parms )
+                api_return = cluster.call_api( method=method, parms=parms )
+                if metric not in self.clusterdata[str(cluster)][category]: 
+                    log.debug(f"first call for {category}/{metric}")
+                    self.clusterdata[str(cluster)][category][metric] = api_return
+                else:
+                    log.debug(f"follow-on call for {category}/{metric}")
+                    self.clusterdata[str(cluster)][category][metric] += api_return
+                    # then we already have data for this category - must be a lot of nodes (>100)
         except Exception as exc:
             # just log it, as we're probably in a thread
             log.critical(f"Exception caught: {exc}")
@@ -384,7 +391,7 @@ class wekaCollector(object):
                     import copy
                     newcmd = copy.deepcopy(command)                           # make sure to copy it
                     newcmd["parms"]["node_ids"] = copy.deepcopy(query_nodes[i:i+step])     # make sure to copy it
-                    log.debug(f"{i}: {i+step}, {cluster.name} {query_nodes[i:i+step]}" )  # debugging
+                    #log.debug(f"{i}: {i+step}, {cluster.name} {query_nodes[i:i+step]}" )  # debugging
                     log.debug(f"scheduling {cluster.name} {newcmd['parms']}" )  # debugging
                     try:
                         thread_runner.new( self.call_api, (cluster, stat, category, newcmd ) ) 
@@ -590,7 +597,7 @@ class wekaCollector(object):
         #print(wekadata)
         log.debug(f"io stats cluster={cluster.name}")
         for category, stat_dict in self.get_weka_stat_list().items():
-            print(f"category={category}")
+            #log.debug(f"category={category}")
             for stat, nodelist in wekadata[category].items():
                 unit = stat_dict[stat]
                 for node in nodelist:
