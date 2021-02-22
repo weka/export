@@ -1,16 +1,12 @@
 # Weka Metrics Exporter
 
-Version 3.5.0:
-
-Added much more error checking and more complete logging.  Changed Docker image to run unprivledged in the container.  Added --version to export so you can see what version you're running.
-
-All-new Version 3
+Version 1.0.0:
 
 Metrics exporter for WekaFS. Gathers metrics and statistics from Weka Clusters and exposes a metrics endpoint for Prometheus to scrape.
 
 ## What's new
 
-Largely re-written and modularized.   
+Largely re-written and modularized. New Repo, resetting version to 1.0.0
 Now using the weka api to talk to the cluster(s), rather than spawning weka commands.     
 Improved logging and new verbosity levels.    
 It can now gather metrics from multiple clusters     

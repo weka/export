@@ -4,7 +4,6 @@
 # Vince Fleming
 # vince@weka.io
 #
-VERSION="0.9.7"
 
 # system imports
 import logging
@@ -24,6 +23,7 @@ from wekalib.wekacluster import WekaCluster
 import wekalib.signals as signals
 from collector import wekaCollector
 
+VERSION="1.0.0"
 
 def prom_client(port, configfile, cluster_hosts, cluster_auth, lokihost, lokiport):
 
