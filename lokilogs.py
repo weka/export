@@ -8,52 +8,53 @@
 
 # example of usage grafana/loki api when you need push any log/message from your python scipt
 import argparse
-import os
-import subprocess
-import requests
-import json
 import datetime
+import json
+# import syslog
+import time
+from logging import getLogger
+
 import dateutil
 import dateutil.parser
-#import syslog
-import sys
-import signal
-import traceback
-import time
+import requests
 import urllib3
-from logging import debug, info, warning, error, critical, getLogger, DEBUG, StreamHandler, Formatter
 
-import wekalib.wekacluster
-from wekalib.wekaapi import WekaApi
-from wekalib.wekatime import wekatime_to_lokitime, lokitime_to_wekatime, wekatime_to_datetime, lokitime_to_datetime, datetime_to_wekatime, datetime_to_lokitime
+from wekalib.wekatime import lokitime_to_wekatime, wekatime_to_datetime, lokitime_to_datetime, datetime_to_lokitime
 
 log = getLogger(__name__)
 
+
 # convert weka/Loki timestamps
 def wekatime_to_lokitime(wekatime):
-    #log.debug(f"wekatime={wekatime}")
+    # log.debug(f"wekatime={wekatime}")
     eventtime = wekatime_to_datetime(wekatime)
-    return( datetime_to_lokitime(eventtime) )
+    return datetime_to_lokitime(eventtime)
+
 
 def lokitime_to_wekatime(lokitime):
     dt = lokitime_to_datetime(lokitime)
     wekatime = dt.isoformat() + "Z"
-    #log.debug(f"wekatime={wekatime}")
-    return( wekatime )
+    # log.debug(f"wekatime={wekatime}")
+    return wekatime
+
 
 def wekatime_to_datetime(wekatime):
-    return( dateutil.parser.parse( wekatime ) )
+    return dateutil.parser.parse(wekatime)
+
 
 def lokitime_to_datetime(lokitime):
-    return( datetime.datetime(1970, 1, 1) + datetime.timedelta(seconds=int(lokitime)/1000000000) )
+    return datetime.datetime(1970, 1, 1) + datetime.timedelta(seconds=int(lokitime) / 1000000000)
+
 
 def datetime_to_wekatime(dt):
     wekatime = dt.isoformat() + "Z"
-    #log.debug(f"wekatime={wekatime}")
-    return( wekatime )
+    # log.debug(f"wekatime={wekatime}")
+    return wekatime
+
 
 def datetime_to_lokitime(dt):
-    return( str(int(dt.timestamp() * 1000000000)) )
+    return str(int(dt.timestamp() * 1000000000))
+
 
 class LokiServer(object):
     def __init__(self, lokihost, lokiport):
@@ -61,8 +62,8 @@ class LokiServer(object):
         self.port = lokiport
 
     # push msg log into grafana-loki
-    def loki_logevent( self, timestamp, event, **labels ):
-        url = 'http://' + self.host + ':' + str(self.port) + '/loki/api/v1/push'   # set the URL
+    def loki_logevent(self, timestamp, event, **labels):
+        url = 'http://' + self.host + ':' + str(self.port) + '/loki/api/v1/push'  # set the URL
 
         # set the headers
         headers = {
@@ -75,8 +76,8 @@ class LokiServer(object):
             'streams': [
                 {
                     'stream': labels["labels"],
-                    'values':[
-                        [ timestamp, event ]
+                    'values': [
+                        [timestamp, event]
                     ]
                 }
             ]
@@ -84,25 +85,25 @@ class LokiServer(object):
 
         # encode payload to a string
         payload_str = json.dumps(payload)
-        #log.debug( json.dumps(payload, indent=4, sort_keys=True) )
+        # log.debug( json.dumps(payload, indent=4, sort_keys=True) )
 
         # this is where we actually send it
         try:
             answer = requests.post(url, data=payload_str, headers=headers)
         except Exception as exc:
             log.critical(f"{exc} caught")
-            return( False )
+            return False
 
         # check the return code
         if answer.status_code == 400:
             # I've only seen code 400 for duplicate entries; but I could be wrong. ;)
             log.error(f"Error posting event; possible duplicate entry: {answer.text}")
-            return( True )  # ignore the error so we don't retry submission forever
+            return True  # ignore the error so we don't retry submission forever
         elif answer.status_code != 204:  # 204 is ok
-            log.error( "loki_logevent(): bad http status code: " + str( answer.status_code ) + " " + answer.text )
-            return( False )
+            log.error("loki_logevent(): bad http status code: " + str(answer.status_code) + " " + answer.text)
+            return False
 
-        return( True )
+        return True
 
         # end loki_logevent
 
@@ -117,15 +118,15 @@ class LokiServer(object):
 
         # must be sorted by timestamp or Loki will reject them
         last_eventtime = "0"
-        for timestamp, event in sorted(event_dict.items()): # oldest first
+        for timestamp, event in sorted(event_dict.items()):  # oldest first
             labels = {
                 "type": "weka",
                 "cluster": cluster.name
             }
-                #"category": event["category"],
-                #"type": event["type"],
-                #"severity": event["severity"],
-                #"node_id": event["nid"],
+            # "category": event["category"],
+            # "type": event["type"],
+            # "severity": event["severity"],
+            # "node_id": event["nid"],
 
             # map weka event severities to Loki event severities
             if event['severity'] == 'MAJOR' or event['severity'] == 'MINOR':
@@ -136,10 +137,10 @@ class LokiServer(object):
             description = f"cluster:{cluster.name} :{event['severity']}: {event['type']}: {event['description']}"
             log.debug(f"sending event: timestamp={timestamp}, labels={labels}, desc={description}")
 
-            if self.loki_logevent( timestamp, description, labels=labels ):
+            if self.loki_logevent(timestamp, description, labels=labels):
                 # only update time if upload successful, so we don't drop events (they should retry upload next time)
-                #cluster.last_event_timestamp = datetime_to_wekatime( datetime.datetime.utcnow() )
-                #cluster.last_event_timestamp = lokitime_to_wekatime( timestamp ) # take the event timestamp?
+                # cluster.last_event_timestamp = datetime_to_wekatime( datetime.datetime.utcnow() )
+                # cluster.last_event_timestamp = lokitime_to_wekatime( timestamp ) # take the event timestamp?
                 num_successful += 1
 
         log.info(f"Total events={len(event_dict)}; successfully sent {num_successful} events")
@@ -148,13 +149,14 @@ class LokiServer(object):
 
         # end send_events
 
+
 # Not used anymore... but might come in handy
 # get the time of the last event that Loki has for this cluster so we know where we left off
 def last_lokievent_time(lokihost, port, cluster):
     http_pool = urllib3.PoolManager()
-    log.debug( "getting last event from Loki" )
-    #url = 'http://' + lokihost + ':' + str(port) + '/loki/api/v1/query'   # set the URL
-    url = 'http://' + lokihost + ':' + str(port) + '/loki/api/v1/query_range'   # set the URL
+    log.debug("getting last event from Loki")
+    # url = 'http://' + lokihost + ':' + str(port) + '/loki/api/v1/query'   # set the URL
+    url = 'http://' + lokihost + ':' + str(port) + '/loki/api/v1/query_range'  # set the URL
 
     # set the headers
     headers = {
@@ -162,24 +164,24 @@ def last_lokievent_time(lokihost, port, cluster):
     }
 
     clusternamequery = "{cluster=\"" + f"{cluster.name}" + "\"}"
-    fields={
-            #'direction': "BACKWARDS",
-            'query': clusternamequery
-            }
+    fields = {
+        # 'direction': "BACKWARDS",
+        'query': clusternamequery
+    }
     try:
-        latest = http_pool.request( 'GET', url, fields=fields )
+        latest = http_pool.request('GET', url, fields=fields)
     except Exception as exc:
         log.debug(f"{exc} caught")
-        return( "0" )
+        return "0"
 
     if latest.status != 200:
-        return( "0" )
+        return "0"
 
     log.debug(f"{latest.status} {latest.data}")
-    latest_data = json.loads( latest.data )
+    latest_data = json.loads(latest.data)
 
     newest = 0
-    #log.debug(f"latest_data={json.dumps(latest_data, indent=4)}")
+    # log.debug(f"latest_data={json.dumps(latest_data, indent=4)}")
     results = latest_data["data"]["result"]
     for result in results:
         values = result["values"]
@@ -192,45 +194,48 @@ def last_lokievent_time(lokihost, port, cluster):
 
     log.debug(f"first_result={first_result}, {lokitime_to_wekatime(first_result)}")
 
-    return( first_result )
+    return first_result
 
     # end last_lokievent_time
+
 
 if __name__ == '__main__':
 
     # Globals
-    target_host=""
-    target_port=0
-    loki_host=""
-    verbose=0
+    target_host = ""
+    target_port = 0
+    loki_host = ""
+    verbose = 0
 
     parser = argparse.ArgumentParser(description="Loki Log Exporter for Weka clusters")
-    parser.add_argument("-c", "--configfile", dest='configfile', default="./weka-metrics-exporter.yml", help="override ./weka-metrics-exporter.yml as config file")
+    parser.add_argument("-c", "--configfile", dest='configfile', default="./weka-metrics-exporter.yml",
+                        help="override ./weka-metrics-exporter.yml as config file")
     parser.add_argument("-p", "--port", dest='port', default="3100", help="TCP port number to listen on")
-    parser.add_argument("-H", "--HOST", dest='wekahost', default="localhost", help="Specify the Weka host(s) (hostname/ip) to collect stats from. May be a comma-separated list")
-    parser.add_argument("-L", "--LOKIHOST", dest='lokihost', default="localhost", help="Specify the hostname of the Loki server" )
-    parser.add_argument("-v", "--verbose", dest='verbose', action="count", help="Enable verbose output" )
+    parser.add_argument("-H", "--HOST", dest='wekahost', default="localhost",
+                        help="Specify the Weka host(s) (hostname/ip) to collect stats from. May be a comma-separated list")
+    parser.add_argument("-L", "--LOKIHOST", dest='lokihost', default="localhost",
+                        help="Specify the hostname of the Loki server")
+    parser.add_argument("-v", "--verbose", dest='verbose', action="count", help="Enable verbose output")
     args = parser.parse_args()
 
-    target_host=args.wekahost   # make sure we can give a list in case one or more are not reachable
-    target_port=args.port
-    loki_host=args.lokihost
-    verbose=args.verbose
+    target_host = args.wekahost  # make sure we can give a list in case one or more are not reachable
+    target_port = args.port
+    loki_host = args.lokihost
+    verbose = args.verbose
 
     # initially, make sure we seed the list with all past events
-    all_events = gather_weka_events( target_host )
-    sortable_events = reformat_events( all_events )
-    send_events( loki_host, sortable_events )
+    all_events = gather_weka_events(target_host)
+    sortable_events = reformat_events(all_events)
+    send_events(loki_host, sortable_events)
 
     while True:
         if verbose > 0:
-            print( "sleeping" )
-        time.sleep( 60 )    # check for events once per minute
+            print("sleeping")
+        time.sleep(60)  # check for events once per minute
         if verbose > 0:
-            print( "gathering events" )
-        all_events = gather_weka_events( target_host, "10m" )   # maybe make this less?  1m?
-        sortable_events = reformat_events( all_events )
+            print("gathering events")
+        all_events = gather_weka_events(target_host, "10m")  # maybe make this less?  1m?
+        sortable_events = reformat_events(all_events)
         if verbose > 0:
-            print( "sending events" )
-        send_events( loki_host, sortable_events )
-
+            print("sending events")
+        send_events(loki_host, sortable_events)
