@@ -243,7 +243,7 @@ class wekaCollector(object):
                 self._reset_metrics()
                 thread_runner = simul_threads(len(self.wekaCollector_objlist))  # one thread per cluster
                 for clustername, cluster in self.wekaCollector_objlist.items():
-                    thread_runner.new(self.gather, (cluster,))
+                    thread_runner.new(self.gather, cluster)
                     # thread_runner.new( cluster.gather )
                 thread_runner.run()
                 del thread_runner
@@ -327,7 +327,7 @@ class wekaCollector(object):
         # get info from weka cluster
         for stat, command in self.WEKAINFO.items():
             try:
-                thread_runner.new(self.call_api, (cluster, stat, None, command))
+                thread_runner.new(self.call_api, cluster, stat, None, command)
             except:
                 log.error("error scheduling wekainfo threads for cluster {}".format(self.clustername))
                 return  # bail out if we can't talk to the cluster with this first command
@@ -413,7 +413,7 @@ class wekaCollector(object):
                     # log.debug(f"{i}: {i+step}, {cluster.name} {query_nodes[i:i+step]}" )  # debugging
                     log.debug(f"scheduling {cluster.name} {newcmd['parms']}")  # debugging
                     try:
-                        thread_runner.new(self.call_api, (cluster, stat, category, newcmd))
+                        thread_runner.new(self.call_api, cluster, stat, category, newcmd)
                     except:
                         log.error("gather(): error scheduling thread wekastat for cluster {}".format(str(cluster)))
 
