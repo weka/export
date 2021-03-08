@@ -2,7 +2,7 @@ FROM alpine:latest
 
 RUN apk add --no-cache bash curl python3 py3-pip
 
-RUN pip3 install prometheus_client pyyaml python-dateutil
+RUN pip3 install prometheus_client pyyaml python-dateutil wekalib
 
 ARG BASEDIR="/weka"
 ARG ID="472"
@@ -17,7 +17,6 @@ COPY export.yml $BASEDIR
 COPY collector.py $BASEDIR
 COPY lokilogs.py $BASEDIR
 RUN mkdir $BASEDIR/wekalib
-COPY wekalib/* $BASEDIR/wekalib/
 
 RUN addgroup -S -g $ID $USER &&\
     adduser -S -h $BASEDIR -u $ID -G $USER $USER && \
