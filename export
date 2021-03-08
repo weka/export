@@ -22,7 +22,7 @@ from lokilogs import LokiServer
 # local imports
 from wekalib.wekacluster import WekaCluster
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 
 
 def prom_client(prom_port, configfile, cluster_hosts, auth, lokihost, lokiport):
