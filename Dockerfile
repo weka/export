@@ -16,7 +16,6 @@ COPY export $BASEDIR
 COPY export.yml $BASEDIR
 COPY collector.py $BASEDIR
 COPY lokilogs.py $BASEDIR
-RUN mkdir $BASEDIR/wekalib
 
 RUN addgroup -S -g $ID $USER &&\
     adduser -S -h $BASEDIR -u $ID -G $USER $USER && \
