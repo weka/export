@@ -60,9 +60,12 @@ def prom_client(prom_port, configfile, cluster_hosts, auth, lokihost, lokiport):
             logger.info(f"getting events for cluster {cluster_obj.name}")
             try:
                 events = cluster_obj.get_events()
-                lokiserver.send_events(events, cluster_obj)
             except Exception as exc:
                 logger.critical(f"Error getting events: {exc} for cluster {cluster_obj.name}")
+            try:
+                lokiserver.send_events(events, cluster_obj)
+            except Exception as exc:
+                logger.critical(f"Error sending events: {exc} for cluster {cluster_obj.name}")
 
 
 if __name__ == '__main__':
@@ -130,13 +133,13 @@ if __name__ == '__main__':
     logging.getLogger("wekalib").setLevel(logging.ERROR)
 
     # configure logging in wekaapi module
-    logging.getLogger("wekalib.wekaapi").setLevel(logging.ERROR)
+    logging.getLogger("wekalib.wekaapi").setLevel(logging.INFO)
 
     # configure logging in sthreads module
     logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR)
 
     # configure logging in wekacluster module
-    logging.getLogger("wekalib.wekacluster").setLevel(logging.DEBUG)
+    logging.getLogger("wekalib.wekacluster").setLevel(logging.INFO)
 
     # configure logging in lokilogs module
     logging.getLogger("lokilogs").setLevel(logging.INFO)
