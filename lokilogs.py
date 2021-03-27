@@ -19,42 +19,9 @@ import dateutil.parser
 import requests
 import urllib3
 
-from wekalib.wekatime import lokitime_to_wekatime, wekatime_to_datetime, lokitime_to_datetime, datetime_to_lokitime
+from wekalib.wekatime import lokitime_to_wekatime, wekatime_to_datetime, lokitime_to_datetime, datetime_to_lokitime, datetime_to_wekatime
 
 log = getLogger(__name__)
-
-
-# convert weka/Loki timestamps
-def wekatime_to_lokitime(wekatime):
-    # log.debug(f"wekatime={wekatime}")
-    eventtime = wekatime_to_datetime(wekatime)
-    return datetime_to_lokitime(eventtime)
-
-
-def lokitime_to_wekatime(lokitime):
-    dt = lokitime_to_datetime(lokitime)
-    wekatime = dt.isoformat() + "Z"
-    # log.debug(f"wekatime={wekatime}")
-    return wekatime
-
-
-def wekatime_to_datetime(wekatime):
-    return dateutil.parser.parse(wekatime)
-
-
-def lokitime_to_datetime(lokitime):
-    return datetime.datetime(1970, 1, 1) + datetime.timedelta(seconds=int(lokitime) / 1000000000)
-
-
-def datetime_to_wekatime(dt):
-    wekatime = dt.isoformat() + "Z"
-    # log.debug(f"wekatime={wekatime}")
-    return wekatime
-
-
-def datetime_to_lokitime(dt):
-    return str(int(dt.timestamp() * 1000000000))
-
 
 class LokiServer(object):
     def __init__(self, lokihost, lokiport):
@@ -102,7 +69,7 @@ class LokiServer(object):
         elif answer.status_code != 204:  # 204 is ok
             log.error("loki_logevent(): bad http status code: " + str(answer.status_code) + " " + answer.text)
             return False
-
+    
         return True
 
         # end loki_logevent
@@ -139,8 +106,8 @@ class LokiServer(object):
 
             if self.loki_logevent(timestamp, description, labels=labels):
                 # only update time if upload successful, so we don't drop events (they should retry upload next time)
-                # cluster.last_event_timestamp = datetime_to_wekatime( datetime.datetime.utcnow() )
-                # cluster.last_event_timestamp = lokitime_to_wekatime( timestamp ) # take the event timestamp?
+                cluster.last_event_timestamp = event['timestamp']
+
                 num_successful += 1
 
         log.info(f"Total events={len(event_dict)}; successfully sent {num_successful} events")
