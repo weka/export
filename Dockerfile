@@ -2,7 +2,7 @@ FROM alpine:latest
 
 RUN apk add --no-cache bash curl python3 py3-pip
 
-RUN pip3 install prometheus_client pyyaml python-dateutil wekalib
+RUN pip3 install prometheus_client pyyaml python-dateutil wekalib>=1.0.4
 
 ARG BASEDIR="/weka"
 ARG ID="472"
