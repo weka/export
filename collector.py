@@ -185,13 +185,14 @@ class wekaCollector(object):
             metric_objs[name] = GaugeMetricFamily(name, parms[0], labels=parms[1])
         metric_objs['weka_protection'] = GaugeMetricFamily('weka_protection', 'Weka Data Protection Status',
                                                            labels=["cluster", 'numFailures'])
-        metric_objs['weka_fs_utilization_percent'] = GaugeMetricFamily('weka_fs_utilization_percent',
-                                                                       'Filesystem % used',
-                                                                       labels=["cluster", 'fsname'])
-        metric_objs['weka_fs_size_bytes'] = GaugeMetricFamily('weka_fs_size_bytes', 'Filesystem size',
-                                                              labels=["cluster", 'name'])
-        metric_objs['weka_fs_used_bytes'] = GaugeMetricFamily('weka_fs_used_bytes', 'Filesystem used capacity',
-                                                              labels=["cluster", 'name'])
+        #metric_objs['weka_fs_utilization_percent'] = GaugeMetricFamily('weka_fs_utilization_percent',
+        #                                                               'Filesystem % used',
+        #                                                               labels=["cluster", 'fsname'])
+        #metric_objs['weka_fs_size_bytes'] = GaugeMetricFamily('weka_fs_size_bytes', 'Filesystem size',
+        #                                                      labels=["cluster", 'name'])
+        #metric_objs['weka_fs_used_bytes'] = GaugeMetricFamily('weka_fs_used_bytes', 'Filesystem used capacity',
+        #                                                      labels=["cluster", 'name'])
+        metric_objs['weka_fs'] = GaugeMetricFamily('weka_fs', 'Filesystem information', labels=['cluster', 'name', 'stat'])
         metric_objs['weka_stats_gauge'] = GaugeMetricFamily('weka_stats',
                                                             'WekaFS statistics. For more info refer to: https://docs.weka.io/usage/statistics/list-of-statistics',
                                                             labels=['cluster', 'host_name', 'host_role', 'node_id',
@@ -558,15 +559,26 @@ class wekaCollector(object):
         try:
             # Filesystem stats
             for fs in wekadata["fs_stat"]:
-                metric_objs['weka_fs_utilization_percent'].add_metric([str(cluster), fs["name"]],
-                                                                      float(fs["used_total"]) / float(
-                                                                          fs["available_total"]) * 100)
-                metric_objs['weka_fs_size_bytes'].add_metric([str(cluster), fs["name"]], fs["available_total"])
-                metric_objs['weka_fs_used_bytes'].add_metric([str(cluster), fs["name"]], fs["used_total"])
+                # retire these 3 in favor of 'weka_fs' below
+                #metric_objs['weka_fs_utilization_percent'].add_metric([str(cluster), fs["name"]], float(fs["used_total"]) / float(
+                #                                                          fs["available_total"]) * 100)
+                #metric_objs['weka_fs_size_bytes'].add_metric([str(cluster), fs["name"]], fs["available_total"])
+                #metric_objs['weka_fs_used_bytes'].add_metric([str(cluster), fs["name"]], fs["used_total"])
+
+                # new way
+                fs['total_percent_used'] = float(fs["used_total"]) / float(fs["available_total"]) * 100
+                fs['ssd_percent_used'] = float(fs["used_ssd"]) / float(fs["available_ssd"]) * 100
+
+                for fs_stat in ['available_total', 'used_total', 'available_ssd','used_ssd', 'total_percent_used', 'ssd_percent_used']:
+                    metric_objs['weka_fs'].add_metric( [ str(cluster), fs["name"], fs_stat ], fs[fs_stat] )
+
+        #metric_objs['weka_fs'] = GaugeMetricFamily('weka_fs', 'Filesystem information', labels=['cluster', 'name', 'stat'])
+
         except:
             # track = traceback.format_exc()
             # print(track)
             log.error("error processing filesystem stats for cluster {}".format(str(cluster)))
+            raise
 
             # labels=['cluster', 'type', 'title', 'host_name', 'host_id', 'node_id', 'drive_id' ] )
         log.debug(f"alerts cluster={cluster.name}")
