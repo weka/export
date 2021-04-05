@@ -127,6 +127,7 @@ class wekaCollector(object):
         self.clusterdata = {}
         self.threaderror = False
         self.api_stats = {}
+        self.last_collect_time = time.time()
 
         self.wekaCollector_objlist = {str(cluster_obj): cluster_obj}
 
@@ -202,6 +203,7 @@ class wekaCollector(object):
                                                   labels=['cluster', 'host_name', 'host_id', 'node_id', 'drive_id',
                                                           'vendor', 'model', 'serial', 'size', 'status', 'life'])
 
+
     def collect(self):
         with self._access_lock:  # be thread-safe - if we get called from simultaneous scrapes... could be ugly
             self.api_stats['num_calls'] = 0
@@ -209,8 +211,6 @@ class wekaCollector(object):
             start_time = time.time()
             secs_since_last_min = start_time % 60
             secs_to_next_min = 60 - secs_since_last_min
-            log.info(
-                "secs_since_last_min {}, secs_to_next_min {}".format(int(secs_since_last_min), int(secs_to_next_min)))
 
             if self.gather_timestamp is None:
                 log.debug("never gathered before")
@@ -220,11 +220,15 @@ class wekaCollector(object):
 
             # has a collection been done in this minute? (weka updates at the top of the minute)
             secs_since_last_gather = start_time - self.gather_timestamp
-            log.info("secs_since_last_gather {}".format(int(secs_since_last_gather)))
             # has it been more than a min, or have we not gathered since the top of the minute?
             if secs_since_last_gather > 60 or secs_since_last_gather > secs_since_last_min:
                 should_gather = True
                 log.debug("more than a minute since last gather or in new min")
+
+            if time.time() - self.last_collect_time > 1:
+                log.info(
+                    "secs_since_last_min {}, secs_to_next_min {} ".format(int(secs_since_last_min), 
+                    int(secs_to_next_min)) + "secs_since_last_gather {}".format(int(secs_since_last_gather)))
 
             if secs_to_next_min < 10 and should_gather:  # it takes ~10 secs to gather, and we don't want to cross minutes
                 log.debug("sleeping {} seconds".format(int(secs_to_next_min + 1)))
@@ -259,8 +263,12 @@ class wekaCollector(object):
             yield GaugeMetricFamily('weka_collect_seconds', 'Total Time spent in Prometheus collect', value=elapsed)
             yield GaugeMetricFamily('weka_collect_apicalls', 'Total number of api calls',
                                     value=self.api_stats['num_calls'])
-            log.info(
-                f"stats returned. total time = {round(elapsed, 2)}s {self.api_stats['num_calls']} api calls made. {time.asctime()}")
+
+            now = time.time()
+            if now - self.last_collect_time > 1:
+                log.info(
+                    f"stats returned. total time = {round(elapsed, 2)}s {self.api_stats['num_calls']} api calls made. {time.asctime()}")
+            self.last_collect_time = now
 
     # runs in a thread, so args comes in as a dict
     def call_api(self, cluster, metric, category, args):
@@ -313,23 +321,49 @@ class wekaCollector(object):
         # to do on-demand gathers instead of every minute;
         #   only gather if we haven't gathered in this minute (since 0 secs has passed)
 
-        thread_runner = simul_threads(cluster.sizeof())  # 1 per host, please
+        #thread_runner = simul_threads(cluster.sizeof())  # 1 per host, please
 
         # get info from weka cluster
         for stat, command in self.WEKAINFO.items():
             try:
-                thread_runner.new(self.call_api, cluster, stat, None, command)
+                #thread_runner.new(self.call_api, cluster, stat, None, command)
+                cluster.async_call_api((stat,None), command['method'], command['parms'])
             except:
                 log.error("error scheduling wekainfo threads for cluster {}".format(self.clustername))
                 return  # bail out if we can't talk to the cluster with this first command
 
-        thread_runner.run()  # kick off threads; wait for them to complete
+        #thread_runner.run()  # kick off threads; wait for them to complete
+        log.debug("******************************** WAITING ON ASYNC PROCESS *************************************")
+        results = cluster.wait_async()    # wait for api calls to complete (returns APICall objects)
+        log.debug("******************************** WAITING ON ASYNC PROCESS COMPLETE *************************************")
 
-        if self.threaderror or cluster.sizeof() == 0:
+        #if self.threaderror or cluster.sizeof() == 0:
+        if len(results) == 0:
             log.critical(f"api unable to contact cluster {cluster}; aborting gather")
             return
 
-        del thread_runner
+        # new stuff - vince
+        for result in results:      # remember, APICall objects
+            stat = result.opaque[0]
+            category = result.opaque[1]
+
+            if result.status == "good":
+                self.api_stats['num_calls'] += 1
+                if category is not None:
+                    if category not in self.clusterdata[str(cluster)]:
+                        self.clusterdata[str(cluster)][category] = dict()
+                    if stat not in self.clusterdata[str(cluster)][category]:
+                        self.clusterdata[str(cluster)][category][stat] = result.result
+                    else:
+                        self.clusterdata[str(cluster)][category][stat] += result.result
+                else:
+                    if stat not in self.clusterdata[str(cluster)]:
+                        self.clusterdata[str(cluster)][stat] =  result.result
+                    else:
+                        self.clusterdata[str(cluster)][stat] +=  result.result
+
+
+        #del thread_runner
 
         # build maps - need this for decoding data, not collecting it.
         #    do in a try/except block because it can fail if the cluster changes while we're collecting data
