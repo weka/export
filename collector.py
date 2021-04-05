@@ -304,7 +304,11 @@ class wekaCollector(object):
         self.clusterdata[str(cluster)] = wekadata  # clear out old data
 
         # reset the cluster config to be sure we can talk to all the hosts
-        cluster.refresh_config()
+        try:
+            cluster.refresh_config()
+        except Exception as exc:
+            log.critical(f"Unable to communicate with cluster - is it offline?")
+            return
 
         # to do on-demand gathers instead of every minute;
         #   only gather if we haven't gathered in this minute (since 0 secs has passed)
@@ -573,12 +577,6 @@ class wekaCollector(object):
         try:
             # Filesystem stats
             for fs in wekadata["fs_stat"]:
-                # retire these 3 in favor of 'weka_fs' below
-                #metric_objs['weka_fs_utilization_percent'].add_metric([str(cluster), fs["name"]], float(fs["used_total"]) / float(
-                #                                                          fs["available_total"]) * 100)
-                #metric_objs['weka_fs_size_bytes'].add_metric([str(cluster), fs["name"]], fs["available_total"])
-                #metric_objs['weka_fs_used_bytes'].add_metric([str(cluster), fs["name"]], fs["used_total"])
-
                 # new way
                 fs['total_percent_used'] = float(fs["used_total"]) / float(fs["available_total"]) * 100
                 fs['ssd_percent_used'] = float(fs["used_ssd"]) / float(fs["available_ssd"]) * 100
@@ -586,13 +584,11 @@ class wekaCollector(object):
                 for fs_stat in ['available_total', 'used_total', 'available_ssd','used_ssd', 'total_percent_used', 'ssd_percent_used']:
                     metric_objs['weka_fs'].add_metric( [ str(cluster), fs["name"], fs_stat ], fs[fs_stat] )
 
-        #metric_objs['weka_fs'] = GaugeMetricFamily('weka_fs', 'Filesystem information', labels=['cluster', 'name', 'stat'])
-
         except:
             # track = traceback.format_exc()
             # print(track)
             log.error("error processing filesystem stats for cluster {}".format(str(cluster)))
-            raise
+            #raise
 
             # labels=['cluster', 'type', 'title', 'host_name', 'host_id', 'node_id', 'drive_id' ] )
         log.debug(f"alerts cluster={cluster.name}")

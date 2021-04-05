@@ -33,10 +33,10 @@ def prom_client(prom_port, configfile, cluster_hosts, auth, lokihost, lokiport):
     try:
         cluster_obj = WekaCluster(cluster_hosts, auth)
     except Exception as exc:
-        track = traceback.format_exc()
-        print(track)
+        #track = traceback.format_exc()
+        #print(track)
         logger.critical(f"unable to create cluster object: {exc}")
-        sys.exit(1)
+        return
 
     # create the wekaCollector object
     collector = wekaCollector(configfile, cluster_obj)
@@ -120,7 +120,7 @@ def setup_logging(verbosity):
     logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR)
 
     # configure logging in wekacluster module
-    logging.getLogger("wekalib.wekacluster").setLevel(logging.INFO)
+    logging.getLogger("wekalib.wekacluster").setLevel(logging.DEBUG)
 
     # configure logging in lokilogs module
     logging.getLogger("lokilogs").setLevel(logging.INFO)
