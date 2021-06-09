@@ -131,7 +131,9 @@ class wekaCollector(object):
         self.wekaCollector_objlist = {str(cluster_obj): cluster_obj}
 
         global weka_stat_list
+        log.debug("loading config file")
         weka_stat_list = self._load_config(configfile)
+        log.debug("config file loaded")
 
         # set up commands to get stats defined in config file
         # category: {{ stat:unit}, {stat:unit}}
@@ -165,11 +167,19 @@ class wekaCollector(object):
     # load the config file
     @staticmethod
     def _load_config(inputfile):
-        with open(inputfile) as f:
+        try:
+            f = open(inputfile)
+        except Exception as exc:
+            log.error(f"Error opening config file: {exc}")
+            sys.exit(1)
+        with f:
             try:
                 return yaml.load(f, Loader=yaml.FullLoader)
             except AttributeError:
                 return yaml.load(f)
+            except Exception as exc:
+                log.error(f"Error reading config file: {exc}")
+                sys.exit(1)
 
     # module global metrics allows for getting data from multiple clusters in multiple threads - DO THIS WITH A LOCK
     def _reset_metrics(self):

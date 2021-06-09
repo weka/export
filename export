@@ -11,6 +11,7 @@ import logging.handlers
 import os
 import sys
 import time
+import platform
 import traceback
 from multiprocessing import Process
 
@@ -22,20 +23,21 @@ from lokilogs import LokiServer
 # local imports
 from wekalib.wekacluster import WekaCluster
 
-VERSION = "1.0.3"
+VERSION = "1.1.0"
+
+# set the root log
+log = logging.getLogger()
 
 
 def prom_client(prom_port, configfile, cluster_hosts, auth, lokihost, lokiport):
-    # set the root logger
-    logger = logging.getLogger()
 
     try:
         cluster_obj = WekaCluster(cluster_hosts, auth)
     except Exception as exc:
-        track = traceback.format_exc()
-        print(track)
-        logger.critical(f"unable to create cluster object: {exc}")
-        sys.exit(1)
+        #track = traceback.format_exc()
+        #print(track)
+        log.critical(f"Unable to communicate with cluster '{cluster_hosts}': {exc}.  Is the auth file is up-to-date?")
+        return
 
     # create the wekaCollector object
     collector = wekaCollector(configfile, cluster_obj)
@@ -48,8 +50,12 @@ def prom_client(prom_port, configfile, cluster_hosts, auth, lokihost, lokiport):
     #
     # Start up the server to expose the metrics.
     #
-    logger.info(f"starting http server on port {prom_port}")
-    prometheus_client.start_http_server(int(prom_port))
+    log.info(f"starting http server on port {prom_port}")
+    try:
+        prometheus_client.start_http_server(int(prom_port))
+    except Exception as exc:
+        log.critical(f"Unable to start http server on port {prom_port}: {exc}")
+        return 1
 
     # register our custom collector
     prometheus_client.REGISTRY.register(collector)
@@ -57,21 +63,71 @@ def prom_client(prom_port, configfile, cluster_hosts, auth, lokihost, lokiport):
     while True:
         time.sleep(30)  # sleep first, just in case we're started at the same time as Loki; give it time
         if lokiserver is not None:
-            logger.info(f"getting events for cluster {cluster_obj.name}")
+            log.info(f"getting events for cluster {cluster_obj.name}")
             try:
                 events = cluster_obj.get_events()
             except Exception as exc:
-                logger.critical(f"Error getting events: {exc} for cluster {cluster_obj.name}")
-                logger.critical(f"{traceback.format_exc()}")
+                log.critical(f"Error getting events: {exc} for cluster {cluster_obj.name}")
+                log.critical(f"{traceback.format_exc()}")
             else:
                 try:
                     lokiserver.send_events(events, cluster_obj)
                 except Exception as exc:
-                    logger.critical(f"Error sending events: {exc} for cluster {cluster_obj.name}")
-                    logger.critical(f"{traceback.format_exc()}")
+                    log.critical(f"Error sending events: {exc} for cluster {cluster_obj.name}")
+                    log.critical(f"{traceback.format_exc()}")
 
 
-if __name__ == '__main__':
+def configure_logging(logger, verbosity):
+    loglevel = logging.INFO     # default logging level
+
+    # default message formats
+    console_format = "%(message)s"
+    syslog_format =  "%(levelname)s:%(message)s"
+
+    syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
+
+    if verbosity == 1:
+        loglevel = logging.DEBUG
+        console_format = "%(levelname)s:%(message)s"
+        syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
+    elif verbosity > 1:
+        loglevel = logging.DEBUG
+        console_format = "%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
+        syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
+
+    # create handler to log to console
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(console_format))
+    logger.addHandler(console_handler)
+
+    # create handler to log to syslog
+    logger.info(f"setting syslog on {platform.platform()}")
+    if platform.platform()[:5] == "macOS":
+        syslogaddr = "/var/run/syslog"
+    else:
+        syslogaddr = "/dev/log"
+    syslog_handler = logging.handlers.SysLogHandler(syslogaddr)
+    syslog_handler.setFormatter(logging.Formatter(syslog_format))
+
+    # add syslog handler to root logger
+    if syslog_handler is not None:
+        logger.addHandler(syslog_handler)
+
+    # set default loglevel
+    logger.setLevel(loglevel)
+
+    logging.getLogger("wekalib").setLevel(logging.ERROR)
+    logging.getLogger("wekalib.wekaapi").setLevel(logging.DEBUG)
+    logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR)
+    logging.getLogger("wekalib.wekacluster").setLevel(logging.DEBUG)
+    logging.getLogger("urllib3").setLevel(logging.ERROR)
+
+    # local modules
+    logging.getLogger("collector").setLevel(logging.DEBUG)
+    logging.getLogger("lokilogs").setLevel(logging.INFO)
+
+
+def main():
     # handle signals (ie: ^C and such)
     signals.signal_handling()
 
@@ -81,7 +137,7 @@ if __name__ == '__main__':
     parser.add_argument("-p", "--port", dest='port', default="8001", help="TCP port number to listen on")
     parser.add_argument("--loki_host", dest='lokihost', default=None, help="hostname/ip for loki server")
     parser.add_argument("--loki_port", dest='lokiport', default="3100", help="port for loki server")
-    parser.add_argument('clusterspec', default="localhost", nargs='*',
+    parser.add_argument('clusterspec', default=["localhost"], nargs='*',
                         help="Cluster specifications.  <host>,<host>,...:authfile")
     # parser.add_argument("-a", "--autohost", dest='autohost', default=False, action="store_true",
     #           help="Automatically load balance queries over backend hosts" )
@@ -93,70 +149,17 @@ if __name__ == '__main__':
         print(f"{sys.argv[0]} version {VERSION}")
         sys.exit(0)
 
-    if args.verbosity == 0:
-        loglevel = logging.ERROR
-    elif args.verbosity == 1:
-        loglevel = logging.WARNING
-    elif args.verbosity == 2:
-        loglevel = logging.INFO
-    elif args.verbosity > 2:
-        loglevel = logging.DEBUG
-    else:
-        loglevel = logging.DEBUG
+    configure_logging(log, args.verbosity)
 
-    # set the root logger
-    logger = logging.getLogger()
-    # FORMAT = "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(message)s"
-    FORMAT = "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
-    # logging.basicConfig(format=FORMAT)
-    logger.setLevel(loglevel)
-
-    # create handler to log to syslog
-    syslog_handler = logging.handlers.SysLogHandler(address="/dev/log")
-    # syslog_handler.setLevel(loglevel)
-    syslog_handler.setFormatter(logging.Formatter(os.path.basename(sys.argv[0]) + ': %(levelname)s: %(message)s'))
-
-    # create handler to log to stderr
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter(FORMAT))
-    # console_handler.setLevel(loglevel)
-
-    # add handlers to root logger
-    logger.addHandler(syslog_handler)
-    logger.addHandler(console_handler)
-
-    # configure logging in signals module
-    # sublog = logging.getLogger( "signals" )
-    # sublog.setLevel(loglevel)
-
-    # configure logging in collector module
-    logging.getLogger("collector").setLevel(logging.INFO)
-
-    # configure logging in wekalib module (default for all)
-    logging.getLogger("wekalib").setLevel(logging.ERROR)
-
-    # configure logging in wekaapi module
-    logging.getLogger("wekalib.wekaapi").setLevel(logging.INFO)
-
-    # configure logging in sthreads module
-    logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR)
-
-    # configure logging in wekacluster module
-    logging.getLogger("wekalib.wekacluster").setLevel(logging.INFO)
-
-    # configure logging in lokilogs module
-    logging.getLogger("lokilogs").setLevel(logging.INFO)
-
-    # configure logging in circular module
-    # logging.getLogger("wekalib.circular").setLevel(logging.INFO)
-
-    # configure logging in urllib3 module
-    logging.getLogger("urllib3").setLevel(logging.ERROR)
+    if not os.path.exists(args.configfile):
+        log.critical(f"Required configfile '{args.configfile}' does not exist")
+        sys.exit(1)
 
     # schedule up a process for each cluster, put them on conescutive ports starting at 8001 (or specified port)
     subprocesses = {}
     port = int(args.port)
 
+    log.debug(f"args.clusterspec={args.clusterspec}")
     for spec in args.clusterspec:
         clusterspeclist = spec.split(":")
         # cluster_hosts = clusterspeclist[0].split(',')
@@ -164,6 +167,12 @@ if __name__ == '__main__':
             cluster_auth = clusterspeclist[1]
         else:
             cluster_auth = None
+
+        if cluster_auth is not None:
+            cluster_auth = os.path.expanduser(cluster_auth)
+            if not os.path.exists(cluster_auth):
+                log.error(f"Specified auth file '{cluster_auth}' does not exist")
+                sys.exit(1)
         p = Process(target=prom_client,
                     args=(port, args.configfile, clusterspeclist[0], cluster_auth, args.lokihost, args.lokiport))
         subprocesses[clusterspeclist[0]] = p  # keep processes by clusterspec so easy to tell them apart
@@ -171,14 +180,24 @@ if __name__ == '__main__':
 
     # kick them off
     for clusterspec, proc in subprocesses.items():
-        logger.info(f"starting processing of cluster {clusterspec}")
+        log.info(f"starting processing of cluster '{clusterspec}'")
         proc.start()
 
     while True:
-        time.sleep(10)
+        dead_clusters = list()
+        time.sleep(1)
         # monitor subprocesses
+        if len(subprocesses) == 0:
+            log.critical("All sub-processes have died, exiting")
+            sys.exit(1)
         for clusterspec, proc in subprocesses.items():
             if not proc.is_alive():
-                logger.critical(f"Child process for cluster {clusterspec} died.")
+                log.error(f"Child process for cluster '{clusterspec}' died.")
                 proc.join()
+                dead_clusters.append(clusterspec)
+        for dead_cluster in dead_clusters:
+            del subprocesses[dead_cluster]
                 # do we try to restart it?
+
+if __name__ == '__main__':
+    main()
