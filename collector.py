@@ -9,7 +9,6 @@ from prometheus_client import Gauge, Histogram
 from prometheus_client.core import GaugeMetricFamily, InfoMetricFamily, GaugeHistogramMetricFamily
 import time
 import datetime
-import yaml
 from threading import Lock
 import traceback
 import logging
@@ -116,10 +115,9 @@ class wekaCollector(object):
     wekaIOCommands = {}
     weka_stat_list = {}  # category: {{ stat:unit}, {stat:unit}}
 
-    def __init__(self, configfile, cluster_obj):  # wekaCollector
+    def __init__(self, config, cluster_obj):  # wekaCollector
 
         # dynamic module globals
-        # this comes from a yaml file
         buckets = []  # same for everyone
         self._access_lock = Lock()
         self.gather_timestamp = None
@@ -130,10 +128,10 @@ class wekaCollector(object):
 
         self.wekaCollector_objlist = {str(cluster_obj): cluster_obj}
 
+
         global weka_stat_list
-        log.debug("loading config file")
-        weka_stat_list = self._load_config(configfile)
-        log.debug("config file loaded")
+
+        weka_stat_list = config['stats']
 
         # set up commands to get stats defined in config file
         # category: {{ stat:unit}, {stat:unit}}
@@ -164,22 +162,6 @@ class wekaCollector(object):
     def add_cluster(self, cluster_obj):
         self.wekaCollector_objlist[str(cluster_obj)] = cluster_obj
 
-    # load the config file
-    @staticmethod
-    def _load_config(inputfile):
-        try:
-            f = open(inputfile)
-        except Exception as exc:
-            log.error(f"Error opening config file: {exc}")
-            sys.exit(1)
-        with f:
-            try:
-                return yaml.load(f, Loader=yaml.FullLoader)
-            except AttributeError:
-                return yaml.load(f)
-            except Exception as exc:
-                log.error(f"Error reading config file: {exc}")
-                sys.exit(1)
 
     # module global metrics allows for getting data from multiple clusters in multiple threads - DO THIS WITH A LOCK
     def _reset_metrics(self):
@@ -328,7 +310,11 @@ class wekaCollector(object):
         self.clusterdata[str(cluster)] = wekadata  # clear out old data
 
         # reset the cluster config to be sure we can talk to all the hosts
-        cluster.refresh_config()
+        try:
+            cluster.refresh_config()
+        except Exception as exc:
+            log.error(f"Cluster refresh failed on cluster '{cluster}' - check connectivity")
+            return
 
         # to do on-demand gathers instead of every minute;
         #   only gather if we haven't gathered in this minute (since 0 secs has passed)

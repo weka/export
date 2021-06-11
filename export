@@ -14,6 +14,7 @@ import time
 import platform
 import traceback
 from multiprocessing import Process
+import yaml
 
 import prometheus_client
 
@@ -29,32 +30,52 @@ VERSION = "1.1.0"
 log = logging.getLogger()
 
 
-def prom_client(prom_port, configfile, cluster_hosts, auth, lokihost, lokiport):
+# load the config file
+#@staticmethod
+def _load_config(inputfile):
+    try:
+        f = open(inputfile)
+    except Exception as exc:
+        raise
+    with f:
+        try:
+            return yaml.load(f, Loader=yaml.FullLoader)
+        except AttributeError:
+            return yaml.load(f)
+        except Exception as exc:
+            log.error(f"Error reading config file: {exc}")
+            raise
+
+def prom_client(config):
 
     try:
-        cluster_obj = WekaCluster(cluster_hosts, auth)
+        cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth-token'])
     except Exception as exc:
         #track = traceback.format_exc()
         #print(track)
-        log.critical(f"Unable to communicate with cluster '{cluster_hosts}': {exc}.  Is the auth file is up-to-date?")
+        if exc.message == "host_unreachable":
+            log.critical(f"Unable to communicate with cluster '{cluster_hosts}': {exc.message}.  Are the cluster's hostnames in /etc/hosts and/or DNS?")
+        else:
+            log.critical(f"Unable to communicate with cluster '{cluster_hosts}': {exc.message}.  Is the auth file is up-to-date?")
         return
 
     # create the wekaCollector object
-    collector = wekaCollector(configfile, cluster_obj)
+    collector = wekaCollector(config, cluster_obj)
 
-    if lokihost is not None:
-        lokiserver = LokiServer(lokihost, lokiport)
+    if config['exporter']['loki_host'] is not None:
+        #log.debug(f"config['exporter']['loki_host']={type(config['exporter']['loki_host'])}")
+        lokiserver = LokiServer(config['exporter']['loki_host'], config['exporter']['loki_port'])
     else:
         lokiserver = None
 
     #
     # Start up the server to expose the metrics.
     #
-    log.info(f"starting http server on port {prom_port}")
+    log.info(f"starting http server on port {config['exporter']['listen_port']}")
     try:
-        prometheus_client.start_http_server(int(prom_port))
+        prometheus_client.start_http_server(int(config['exporter']['listen_port']))
     except Exception as exc:
-        log.critical(f"Unable to start http server on port {prom_port}: {exc}")
+        log.critical(f"Unable to start http server on port {config['exporter']['listen_port']}: {exc}")
         return 1
 
     # register our custom collector
@@ -117,13 +138,13 @@ def configure_logging(logger, verbosity):
     logger.setLevel(loglevel)
 
     logging.getLogger("wekalib").setLevel(logging.ERROR)
-    logging.getLogger("wekalib.wekaapi").setLevel(logging.DEBUG)
+    logging.getLogger("wekalib.wekaapi").setLevel(logging.ERROR)
     logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR)
-    logging.getLogger("wekalib.wekacluster").setLevel(logging.DEBUG)
+    logging.getLogger("wekalib.wekacluster").setLevel(logging.INFO)
     logging.getLogger("urllib3").setLevel(logging.ERROR)
 
     # local modules
-    logging.getLogger("collector").setLevel(logging.DEBUG)
+    logging.getLogger("collector").setLevel(logging.INFO)
     logging.getLogger("lokilogs").setLevel(logging.INFO)
 
 
@@ -134,11 +155,11 @@ def main():
     parser = argparse.ArgumentParser(description="Prometheus Client for Weka clusters")
     parser.add_argument("-c", "--configfile", dest='configfile', default="./export.yml",
                         help="override ./export.yml as config file")
-    parser.add_argument("-p", "--port", dest='port', default="8001", help="TCP port number to listen on")
-    parser.add_argument("--loki_host", dest='lokihost', default=None, help="hostname/ip for loki server")
-    parser.add_argument("--loki_port", dest='lokiport', default="3100", help="port for loki server")
-    parser.add_argument('clusterspec', default=["localhost"], nargs='*',
-                        help="Cluster specifications.  <host>,<host>,...:authfile")
+    #parser.add_argument("-p", "--port", dest='port', default="8001", help="TCP port number to listen on")
+    #parser.add_argument("--loki_host", dest='lokihost', default=None, help="hostname/ip for loki server")
+    #parser.add_argument("--loki_port", dest='lokiport', default="3100", help="port for loki server")
+    #parser.add_argument('clusterspec', default=["localhost"], nargs='*',
+    #                    help="Cluster specifications.  <host>,<host>,...:authfile")
     # parser.add_argument("-a", "--autohost", dest='autohost', default=False, action="store_true",
     #           help="Automatically load balance queries over backend hosts" )
     parser.add_argument("-v", "--verbosity", action="count", default=0, help="increase output verbosity")
@@ -151,13 +172,24 @@ def main():
 
     configure_logging(log, args.verbosity)
 
-    if not os.path.exists(args.configfile):
-        log.critical(f"Required configfile '{args.configfile}' does not exist")
-        sys.exit(1)
+    #if not os.path.exists(args.configfile):
+    #    log.critical(f"Required configfile '{args.configfile}' does not exist")
+    #    sys.exit(1)
 
+    log.debug("loading config file")
+    try:
+        config = _load_config(args.configfile)
+    except Exception as exc:
+        log.critical(f"Error loading config file '{args.configfile}': {exc}")
+        return
+    log.debug("config file loaded")
+
+    prom_client(config)
+
+    """
     # schedule up a process for each cluster, put them on conescutive ports starting at 8001 (or specified port)
     subprocesses = {}
-    port = int(args.port)
+    #port = int(args.port)
 
     log.debug(f"args.clusterspec={args.clusterspec}")
     for spec in args.clusterspec:
@@ -198,6 +230,7 @@ def main():
         for dead_cluster in dead_clusters:
             del subprocesses[dead_cluster]
                 # do we try to restart it?
+    """
 
 if __name__ == '__main__':
     main()
