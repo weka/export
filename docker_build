@@ -1,1 +1,4 @@
-docker build --tag wekasolutions/export .
+#!/usr/bin/env bash
+./build.sh
+VERSION=$(./tarball/export/export --version | awk '{print $3}')
+docker build --tag wekasolutions/export:latest --tag wekasolutions/export:$VERSION .

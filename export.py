@@ -1,9 +1,11 @@
-#!/usr/bin/env python3
-
 # Weka Prometheus client
 # Vince Fleming
 # vince@weka.io
 #
+
+# It's best to run this either as a binary (use the build.sh to build it) or in the docker container.
+# You can download a copy of the pre-built binary from github.com (look under Releases)
+# You can download pre-built docker container from docker hub - "wekasolutions/export"
 
 import argparse
 # system imports
@@ -54,9 +56,9 @@ def prom_client(config):
         #track = traceback.format_exc()
         #print(track)
         if exc.message == "host_unreachable":
-            log.critical(f"Unable to communicate with cluster '{cluster_hosts}': {exc.message}.  Are the cluster's hostnames in /etc/hosts and/or DNS?")
+            log.critical(f"Unable to communicate with cluster '{config['cluster']['hosts']}': {exc.message}.  Are the cluster's hostnames in /etc/hosts and/or DNS?")
         else:
-            log.critical(f"Unable to communicate with cluster '{cluster_hosts}': {exc.message}.  Is the auth file is up-to-date?")
+            log.critical(f"Unable to communicate with cluster '{config['cluster']['hosts']}': {exc.message}.  Is the auth file is up-to-date?")
         return
 
     # create the wekaCollector object
