@@ -1,11 +1,31 @@
 #
-# weka_prom_client.py configuration file
+# config file for wekasolutions/export
 #
+
+# exporter section - info about how we're going to run
+exporter:
+  listen_port: 8150
+  loki_host: localhost
+  loki_port: 3100
+
+# cluster section - info about the weka cluster we want to export data from:
+cluster:
+  # a list of hostnames or ip addresses.  Minimum of 1 requred.  You do not need to list all hosts in the cluster
+  hosts:
+    - vweka01
+    - vweka02
+    - vweka03
+  # auth_token_file can be an absolute path, relative path, or filename.  
+  # If just a filename it will be searched for in ".", "~/.weka", and "./.weka"
+  # This file can be generated with the 'weka user login' command and copied to where we are running
+  auth_token_file: auth-token.json
+
 # This file comes pre-set to pupulate the Grafana Panels that we've provided
 #
 # File format:
 #
-# category:
+#stats:
+#  category:
 #    statistic: unit_of_measurement
 #    statistic: unit_of_measurement
 #    statistic: unit_of_measurement
@@ -23,18 +43,6 @@
 #   meanwhile, don't uncomment a Category without uncommenting at least one statistic under it.
 #
 #
-
-cluster:
-  hosts:
-    - vweka01
-    - vweka02
-    - vweka03
-  auth-token: auth-token.json
-    
-exporter:
-  listen_port: 8150
-  loki_host: localhost
-  loki_port: 3100
 
 stats:
   cpu:     # Category

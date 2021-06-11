@@ -49,7 +49,7 @@ def _load_config(inputfile):
 def prom_client(config):
 
     try:
-        cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth-token'])
+        cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth_token_file'])
     except Exception as exc:
         #track = traceback.format_exc()
         #print(track)
@@ -138,9 +138,9 @@ def configure_logging(logger, verbosity):
     logger.setLevel(loglevel)
 
     logging.getLogger("wekalib").setLevel(logging.ERROR)
-    logging.getLogger("wekalib.wekaapi").setLevel(logging.ERROR)
-    logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR)
+    logging.getLogger("wekalib.wekaapi").setLevel(logging.INFO) # should leave at INFO as default
     logging.getLogger("wekalib.wekacluster").setLevel(logging.INFO)
+    logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR) # should leave at ERROR as default
     logging.getLogger("urllib3").setLevel(logging.ERROR)
 
     # local modules
