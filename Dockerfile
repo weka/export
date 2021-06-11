@@ -1,22 +1,17 @@
-FROM alpine:latest
+FROM ubuntu:20.04
 
-RUN apk add --no-cache bash
 
 ARG BASEDIR="/weka"
 ARG ID="472"
 ARG USER="weka"
 
-RUN mkdir -p $BASEDIR
+RUN adduser --home $BASEDIR --uid $ID --disabled-password --gecos "Weka User" $USER
 
 WORKDIR $BASEDIR
 
 COPY tarball/export/export $BASEDIR
 
-RUN addgroup -S -g $ID $USER &&\
-    adduser -S -h $BASEDIR -u $ID -G $USER $USER && \
-    chown -R $USER:$USER $BASEDIR
-
 EXPOSE 8001
 
 USER $USER
-ENTRYPOINT ["./export"]
+ENTRYPOINT ["/weka/export"]

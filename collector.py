@@ -78,7 +78,7 @@ def parse_sizes_values_pre38(
 
 
 # our prometheus collector
-class wekaCollector(object):
+class WekaCollector(object):
     WEKAINFO = {
         "hostList": dict(method="hosts_list", parms={}),
         "clusterinfo": dict(method="status", parms={}),
@@ -126,7 +126,8 @@ class wekaCollector(object):
         self.threaderror = False
         self.api_stats = {}
 
-        self.wekaCollector_objlist = {str(cluster_obj): cluster_obj}
+        #self.wekaCollector_objlist = {str(cluster_obj): cluster_obj}
+        self.cluster = cluster_obj
 
 
         global weka_stat_list
@@ -158,9 +159,6 @@ class wekaCollector(object):
 
     def get_weka_stat_list(self):
         return weka_stat_list
-
-    def add_cluster(self, cluster_obj):
-        self.wekaCollector_objlist[str(cluster_obj)] = cluster_obj
 
 
     # module global metrics allows for getting data from multiple clusters in multiple threads - DO THIS WITH A LOCK
@@ -203,6 +201,7 @@ class wekaCollector(object):
 
     def collect(self):
         with self._access_lock:  # be thread-safe - if we get called from simultaneous scrapes... could be ugly
+
             self.api_stats['num_calls'] = 0
             should_gather = False
             start_time = time.time()
@@ -234,12 +233,13 @@ class wekaCollector(object):
                 log.info("gathering")
                 self.gather_timestamp = start_time
                 self._reset_metrics()
-                thread_runner = simul_threads(len(self.wekaCollector_objlist))  # one thread per cluster
-                for clustername, cluster in self.wekaCollector_objlist.items():
-                    thread_runner.new(self.gather, cluster)
-                    # thread_runner.new( cluster.gather )
-                thread_runner.run()
-                del thread_runner
+                #thread_runner = simul_threads(len(self.wekaCollector_objlist))  # one thread per cluster
+                #for clustername, cluster in self.wekaCollector_objlist.items():
+                #    thread_runner.new(self.gather, cluster)
+                #    # thread_runner.new( cluster.gather )
+                #thread_runner.run()
+                #del thread_runner
+                self.gather()
 
             # ok, the prometheus_client module calls this method TWICE every time it scrapes...  ugh
             last_collect = self.collect_time
@@ -269,7 +269,9 @@ class wekaCollector(object):
                 f"status returned. total time = {round(elapsed, 2)}s {self.api_stats['num_calls']} api calls made. {time.asctime()}")
 
     # runs in a thread, so args comes in as a dict
-    def call_api(self, cluster, metric, category, args):
+    def call_api(self, metric, category, args):
+
+        cluster = self.cluster
         self.api_stats['num_calls'] += 1
         method = args['method']
         parms = args['parms']
@@ -301,7 +303,10 @@ class wekaCollector(object):
     # gather() is PER CLUSTER
     #
     # @gather_gauge.time()        # doesn't make a whole lot of sense since we may have more than one cluster
-    def gather(self, cluster):
+    def gather(self):
+
+        cluster = self.cluster
+
         start_time = time.time()
         log.info("gathering weka data from cluster {}".format(str(cluster)))
 
@@ -324,7 +329,7 @@ class wekaCollector(object):
         # get info from weka cluster
         for stat, command in self.WEKAINFO.items():
             try:
-                thread_runner.new(self.call_api, cluster, stat, None, command)
+                thread_runner.new(self.call_api, stat, None, command)
             except:
                 log.error("error scheduling wekainfo threads for cluster {}".format(self.clustername))
                 return  # bail out if we can't talk to the cluster with this first command
@@ -362,6 +367,7 @@ class wekaCollector(object):
 
         log.info(f"Cluster {cluster} Using {cluster.sizeof()} hosts")
         thread_runner = simul_threads(
+            # maybe reduce from 4 to 1 or 2 (Vince)
             cluster.sizeof() * 4)  # up the server count - so 1 thread per server in the cluster
         # thread_runner = simul_threads(50)  # testing
 
@@ -410,7 +416,7 @@ class wekaCollector(object):
                     # log.debug(f"{i}: {i+step}, {cluster.name} {query_nodes[i:i+step]}" )  # debugging
                     log.debug(f"scheduling {cluster.name} {newcmd['parms']}")  # debugging
                     try:
-                        thread_runner.new(self.call_api, cluster, stat, category, newcmd)
+                        thread_runner.new(self.call_api, stat, category, newcmd)
                     except:
                         log.error("gather(): error scheduling thread wekastat for cluster {}".format(str(cluster)))
 

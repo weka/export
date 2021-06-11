@@ -21,7 +21,7 @@ import yaml
 import prometheus_client
 
 import wekalib.signals as signals
-from collector import wekaCollector
+from collector import WekaCollector
 from lokilogs import LokiServer
 # local imports
 from wekalib.wekacluster import WekaCluster
@@ -61,11 +61,10 @@ def prom_client(config):
             log.critical(f"Unable to communicate with cluster '{config['cluster']['hosts']}': {exc.message}.  Is the auth file is up-to-date?")
         return
 
-    # create the wekaCollector object
-    collector = wekaCollector(config, cluster_obj)
+    # create the WekaCollector object
+    collector = WekaCollector(config, cluster_obj)
 
     if config['exporter']['loki_host'] is not None:
-        #log.debug(f"config['exporter']['loki_host']={type(config['exporter']['loki_host'])}")
         lokiserver = LokiServer(config['exporter']['loki_host'], config['exporter']['loki_port'])
     else:
         lokiserver = None
@@ -157,13 +156,6 @@ def main():
     parser = argparse.ArgumentParser(description="Prometheus Client for Weka clusters")
     parser.add_argument("-c", "--configfile", dest='configfile', default="./export.yml",
                         help="override ./export.yml as config file")
-    #parser.add_argument("-p", "--port", dest='port', default="8001", help="TCP port number to listen on")
-    #parser.add_argument("--loki_host", dest='lokihost', default=None, help="hostname/ip for loki server")
-    #parser.add_argument("--loki_port", dest='lokiport', default="3100", help="port for loki server")
-    #parser.add_argument('clusterspec', default=["localhost"], nargs='*',
-    #                    help="Cluster specifications.  <host>,<host>,...:authfile")
-    # parser.add_argument("-a", "--autohost", dest='autohost', default=False, action="store_true",
-    #           help="Automatically load balance queries over backend hosts" )
     parser.add_argument("-v", "--verbosity", action="count", default=0, help="increase output verbosity")
     parser.add_argument("--version", dest="version", default=False, action="store_true", help="Display version number")
     args = parser.parse_args()
@@ -188,51 +180,7 @@ def main():
 
     prom_client(config)
 
-    """
-    # schedule up a process for each cluster, put them on conescutive ports starting at 8001 (or specified port)
-    subprocesses = {}
-    #port = int(args.port)
 
-    log.debug(f"args.clusterspec={args.clusterspec}")
-    for spec in args.clusterspec:
-        clusterspeclist = spec.split(":")
-        # cluster_hosts = clusterspeclist[0].split(',')
-        if len(clusterspeclist) > 1:
-            cluster_auth = clusterspeclist[1]
-        else:
-            cluster_auth = None
-
-        if cluster_auth is not None:
-            cluster_auth = os.path.expanduser(cluster_auth)
-            if not os.path.exists(cluster_auth):
-                log.error(f"Specified auth file '{cluster_auth}' does not exist")
-                sys.exit(1)
-        p = Process(target=prom_client,
-                    args=(port, args.configfile, clusterspeclist[0], cluster_auth, args.lokihost, args.lokiport))
-        subprocesses[clusterspeclist[0]] = p  # keep processes by clusterspec so easy to tell them apart
-        port += 1
-
-    # kick them off
-    for clusterspec, proc in subprocesses.items():
-        log.info(f"starting processing of cluster '{clusterspec}'")
-        proc.start()
-
-    while True:
-        dead_clusters = list()
-        time.sleep(1)
-        # monitor subprocesses
-        if len(subprocesses) == 0:
-            log.critical("All sub-processes have died, exiting")
-            sys.exit(1)
-        for clusterspec, proc in subprocesses.items():
-            if not proc.is_alive():
-                log.error(f"Child process for cluster '{clusterspec}' died.")
-                proc.join()
-                dead_clusters.append(clusterspec)
-        for dead_cluster in dead_clusters:
-            del subprocesses[dead_cluster]
-                # do we try to restart it?
-    """
 
 if __name__ == '__main__':
     main()
