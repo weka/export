@@ -52,7 +52,7 @@ def prom_client(config):
 
     try:
         cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth_token_file'])
-    except Exception as exc:
+    except wekalib.APIException as exc:
         #track = traceback.format_exc()
         #print(track)
         if exc.message == "host_unreachable":
@@ -60,6 +60,9 @@ def prom_client(config):
         else:
             log.critical(f"Unable to communicate with cluster '{config['cluster']['hosts']}': {exc.message}.  Is the auth file is up-to-date?")
         return
+    except Exception as exc:
+        # misc errors
+        log.critical(f"Misc error creating cluster object with cluster '{config['cluster']['hosts']}': {exc}.  Is the cluster down?")
 
     # create the WekaCollector object
     collector = WekaCollector(config, cluster_obj)
@@ -90,13 +93,13 @@ def prom_client(config):
                 events = cluster_obj.get_events()
             except Exception as exc:
                 log.critical(f"Error getting events: {exc} for cluster {cluster_obj.name}")
-                log.critical(f"{traceback.format_exc()}")
+                #log.critical(f"{traceback.format_exc()}")
             else:
                 try:
                     lokiserver.send_events(events, cluster_obj)
                 except Exception as exc:
                     log.critical(f"Error sending events: {exc} for cluster {cluster_obj.name}")
-                    log.critical(f"{traceback.format_exc()}")
+                    #log.critical(f"{traceback.format_exc()}")
 
 
 def configure_logging(logger, verbosity):
