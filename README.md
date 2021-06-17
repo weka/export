@@ -1,8 +1,48 @@
 # Weka Metrics Exporter
 
+A Prometheus Metrics exporter for WekaFS. Gathers metrics and statistics from Weka Clusters and exposes a metrics endpoint for Prometheus to scrape.
+
+Full Weka documentation is on http://docs.weka.io
+
+Version 1.1.0:
+
+## What's new
+
+Goodbye command-line args, goodbye ClusterSpecs!   This new version has all the configuration in the export.yml file!
+
+With this new version, you'll have to run another instance for each Weka Cluster you have, rather than having one instance do all your clusters.   In practice, most customers either have only one cluster, or run multiple instances of export anyway, and handling more than one added a lot of complexity.  We've reduced the command-line args, but you can still override the configuration file name and set verbosity levels.
+
+Some new sections have been added to the .yml file as a result of this:
+
+```
+exporter:
+  listen_port: 8001
+  loki_host: localhost
+  loki_port: 3100
+
+cluster:
+  hosts:
+    - weka01
+    - weka02
+    - weka03
+  auth_token_file: auth-token.json
+```
+
+The `exporter` section describes global settings for the export program itself, such as what port to listen on and where to find grafana/loki.
+
+The `cluster` section describes the target weka cluster.   Note that with Weka v3.11.x, the auth-token.json file is required, due to us tightening security of the product.  The 'hosts' key is a list of hostnames or ip addresses.  You must specify at least one, and we recommend two or more.  There is no need to list all of the hosts in the Weka Cluster.
+
+We highly recommend using the pre-compiled binary (in a tarball under Releases on this page - https://github.com/weka/export/releases), or the Docker Container, available on Docker Hub as `wekasolutions/export`, or better yet, use with the docker-compose configuration that is part of Weka-Mon (http://github.com/weka/weka-mon).
+
+
+
+
+
+
+
+
 Version 1.0.0:
 
-Metrics exporter for WekaFS. Gathers metrics and statistics from Weka Clusters and exposes a metrics endpoint for Prometheus to scrape.
 
 ## What's new
 
@@ -16,7 +56,7 @@ Changed command-line arguments, particularly cluster specification (see below - 
 
 The simplest installation is to get the docker container via `docker pull weka-solutions/export:latest`
 
-This package should be combined with our Grafana panel, available at `https://github.com/weka/grafana-dashboards`  Follow the instructions there for simple installation.
+This package should be combined with our Grafana panels, available at `https://github.com/weka/weka-mon`  Follow the instructions there for simple installation.
 
 To run outside a container:
 1. Unpack tarball from Releases or clone repository.

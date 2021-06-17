@@ -1,5 +1,5 @@
 TOOL=export
-pyinstaller --onefile $TOOL
+pyinstaller --onefile ${TOOL}.py
 
 TARGET=tarball/$TOOL
 mkdir -p $TARGET

@@ -7,4 +7,4 @@ PyYAML==5.4.1
 requests==2.25.1
 six==1.15.0
 urllib3
-wekalib
+wekalib>=1.1.0
