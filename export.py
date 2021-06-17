@@ -53,15 +53,12 @@ def prom_client(config):
     try:
         cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth_token_file'])
     except APIException as exc:
-        #track = traceback.format_exc()
-        #print(track)
         if exc.message == "host_unreachable":
             log.critical(f"Unable to communicate with cluster '{config['cluster']['hosts']}': {exc.message}.  Are the cluster's hostnames in /etc/hosts and/or DNS?")
         else:
             log.critical(f"Unable to communicate with cluster '{config['cluster']['hosts']}': {exc.message}.  Is the auth file is up-to-date?")
         return
     except Exception as exc:
-        # misc errors
         log.critical(f"Misc error creating cluster object with cluster '{config['cluster']['hosts']}': {exc}.  Is the cluster down?")
         log.debug(traceback.format_exc())
         return
