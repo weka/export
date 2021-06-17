@@ -4,7 +4,7 @@
 
 # exporter section - info about how we're going to run
 exporter:
-  listen_port: 8001
+  listen_port: 8150
   loki_host: localhost
   loki_port: 3100
 
@@ -12,9 +12,9 @@ exporter:
 cluster:
   # a list of hostnames or ip addresses.  Minimum of 1 requred.  You do not need to list all hosts in the cluster
   hosts:
-    - weka01
-    - weka02
-    - weka03
+    - vweka01
+    - vweka02
+    - vweka03
   # auth_token_file can be an absolute path, relative path, or filename.  
   # If just a filename it will be searched for in ".", "~/.weka", and "./.weka"
   # This file can be generated with the 'weka user login' command and copied to where we are running
@@ -240,7 +240,7 @@ stats:
 #    WRITE_DURATION: microsecs
     WRITE_LATENCY: microsecs
     WRITE_SIZES: sizes
-#  ssd:        # Category
+  ssd:        # Category
 #    DRIVE_READ_LATENCY: microsecs
 #    DRIVE_READ_OPS: ops
 #    DRIVE_WRITE_LATENCY: microsecs
