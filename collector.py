@@ -19,7 +19,7 @@ import json
 # local imports
 from wekalib.wekacluster import WekaCluster
 from wekalib.wekaapi import WekaApi
-from wekalib.sthreads import simul_threads
+#from wekalib.sthreads import simul_threads
 from wekalib.wekatime import wekatime_to_datetime
 
 # class WekaIOHistogram(Histogram):
@@ -134,18 +134,21 @@ class WekaCollector(object):
 
         weka_stat_list = config['stats']
 
+        #log.debug(f"weka_stat_list={weka_stat_list}")
+
         # set up commands to get stats defined in config file
         # category: {{ stat:unit}, {stat:unit}}
         for category, stat_dict in weka_stat_list.items():
-            log.debug(stat_dict)
+            #log.debug(f"category={category}, stat_dict={stat_dict}")
             if stat_dict is not None:
                 for stat, unit in stat_dict.items():
                     # have to create the category keys, so do it with a try: block
-                    if category not in self.wekaIOCommands:
+                    if category not in self.wekaIOCommands.keys():
+                        #log.debug(f"Initializing category {category}")
                         self.wekaIOCommands[category] = {}
 
-                parms = dict(category=category, stat=stat, interval='1m', per_node=True, no_zeroes=True)
-                self.wekaIOCommands[category][stat] = dict(method="stats_show", parms=parms)
+                    parms = dict(category=category, stat=stat, interval='1m', per_node=True, no_zeroes=True)
+                    self.wekaIOCommands[category][stat] = dict(method="stats_show", parms=parms)
 
         # vince - make this a module global, as it applies to all objects of this type
         # set up buckets, [4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304, 8388608, 16777216, 33554432, 67108864, 134217728, inf]
@@ -411,9 +414,9 @@ class WekaCollector(object):
             return
 
         log.info(f"Cluster {cluster} Using {cluster.sizeof()} hosts")
-        thread_runner = simul_threads(
+        #thread_runner = simul_threads(
             # maybe reduce from 4 to 1 or 2 (Vince)
-            cluster.sizeof() * 4)  # up the server count - so 1 thread per server in the cluster
+        #    cluster.sizeof() * 4)  # up the server count - so 1 thread per server in the cluster
         # thread_runner = simul_threads(50)  # testing
 
         # be simplistic at first... let's just gather on a subset of nodes each query
@@ -447,11 +450,12 @@ class WekaCollector(object):
             for nodetype in category_nodetypes[category]:  # nodetype is FRONTEND, COMPUTE, DRIVES, MANAGEMENT
                 category_nodes += node_maps[nodetype]
 
-            log.debug(f"{cluster.name} cat nodes: {category} {category_nodes}")  # debugging
+            #log.debug(f"{cluster.name} cat nodes: {category} {category_nodes}")  # debugging
 
             query_nodes = list(
                 set(category_nodes.copy()))  # make the list unique so we don't ask for the same data muliple times
 
+            log.debug(f"category={category}, stat_dict={stat_dict}")
             for stat, command in stat_dict.items():
                 step = 100
                 for i in range(0, len(query_nodes), step):
@@ -760,6 +764,21 @@ class WekaCollector(object):
         log.debug(f"Complete cluster={cluster.name}")
 
     # ------------- end of gather() -------------
+
+    def collect_logs(self, lokiserver):
+        with self._access_lock:  # make sure we don't conflict with a metrics collection
+            log.info(f"getting events for cluster {self.cluster}")
+            try:
+                events = self.cluster.get_events()
+            except Exception as exc:
+                log.critical(f"Error getting events: {exc} for cluster {self.cluster}")
+                #log.critical(f"{traceback.format_exc()}")
+            else:
+                try:
+                    lokiserver.send_events(events, self.cluster)
+                except Exception as exc:
+                    log.critical(f"Error sending events: {exc} for cluster {self.cluster}")
+                    #log.critical(f"{traceback.format_exc()}")
 
     @staticmethod
     def _trim_time(time_string):

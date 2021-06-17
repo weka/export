@@ -90,18 +90,7 @@ def prom_client(config):
     while True:
         time.sleep(30)  # sleep first, just in case we're started at the same time as Loki; give it time
         if lokiserver is not None:
-            log.info(f"getting events for cluster {cluster_obj.name}")
-            try:
-                events = cluster_obj.get_events()
-            except Exception as exc:
-                log.critical(f"Error getting events: {exc} for cluster {cluster_obj.name}")
-                #log.critical(f"{traceback.format_exc()}")
-            else:
-                try:
-                    lokiserver.send_events(events, cluster_obj)
-                except Exception as exc:
-                    log.critical(f"Error sending events: {exc} for cluster {cluster_obj.name}")
-                    #log.critical(f"{traceback.format_exc()}")
+            collector.collect_logs(lokiserver)
 
 
 def configure_logging(logger, verbosity):
