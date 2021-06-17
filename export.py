@@ -24,7 +24,7 @@ import wekalib.signals as signals
 from collector import WekaCollector
 from lokilogs import LokiServer
 # local imports
-from wekalib.wekacluster import WekaCluster
+from wekalib.wekacluster import WekaCluster, APIException
 
 VERSION = "1.1.0"
 
@@ -52,7 +52,7 @@ def prom_client(config):
 
     try:
         cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth_token_file'])
-    except wekalib.APIException as exc:
+    except APIException as exc:
         #track = traceback.format_exc()
         #print(track)
         if exc.message == "host_unreachable":
@@ -63,6 +63,8 @@ def prom_client(config):
     except Exception as exc:
         # misc errors
         log.critical(f"Misc error creating cluster object with cluster '{config['cluster']['hosts']}': {exc}.  Is the cluster down?")
+        log.debug(traceback.format_exc())
+        return
 
     # create the WekaCollector object
     collector = WekaCollector(config, cluster_obj)
