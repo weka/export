@@ -12,6 +12,8 @@ import datetime
 import json
 # import syslog
 import time
+import socket
+import sys
 from logging import getLogger
 
 import dateutil
@@ -27,6 +29,15 @@ class LokiServer(object):
     def __init__(self, lokihost, lokiport):
         self.host = lokihost
         self.port = lokiport
+        # save some trouble, and make sure names are resolvable
+        try:
+            socket.gethostbyname(lokihost)
+        except socket.gaierror as exc:
+            log.critical(f"Loki Server name '{lokihost}' is not resolvable - is it in /etc/hosts or DNS?")
+            raise
+        except Exception as exc:
+            log.critical(exc)
+            raise
 
     # push msg log into grafana-loki
     def loki_logevent(self, timestamp, event, **labels):
@@ -57,9 +68,13 @@ class LokiServer(object):
         # this is where we actually send it
         try:
             answer = requests.post(url, data=payload_str, headers=headers)
+        except requests.exceptions.ConnectionError as exc:
+            log.critical(f"Unable to send Events to Loki: unable to establish connection: FATAL")
+            raise
+
         except Exception as exc:
-            log.critical(f"{exc} caught")
-            return False
+            log.critical(f"Unable to send Events to Loki")
+            raise
 
         # check the return code
         if answer.status_code == 400:
@@ -104,11 +119,14 @@ class LokiServer(object):
             description = f"cluster:{cluster.name} :{event['severity']}: {event['type']}: {event['description']}"
             log.debug(f"sending event: timestamp={timestamp}, labels={labels}, desc={description}")
 
-            if self.loki_logevent(timestamp, description, labels=labels):
-                # only update time if upload successful, so we don't drop events (they should retry upload next time)
-                cluster.last_event_timestamp = event['timestamp']
+            try:
+                if self.loki_logevent(timestamp, description, labels=labels):
+                    # only update time if upload successful, so we don't drop events (they should retry upload next time)
+                    cluster.last_event_timestamp = event['timestamp']
+                    num_successful += 1
+            except:
+                break   # if it has an exception, abort 
 
-                num_successful += 1
 
         log.info(f"Total events={len(event_dict)}; successfully sent {num_successful} events")
         if num_successful != 0:
