@@ -15,6 +15,7 @@ import logging
 import logging.handlers
 from logging import debug, info, warning, error, critical, getLogger, DEBUG
 import json
+import sys
 
 # local imports
 from wekalib.wekacluster import WekaCluster
@@ -287,6 +288,9 @@ class WekaCollector(object):
                 log.info("gathering")
                 try:
                     self.gather()
+                except wekalib.exceptions.NameNotResolvable as exc:
+                    log.critical(f"Unable to resolve names; terminating")
+                    sys.exit(1)
                 except Exception as exc:
                     log.critical(f"Error gathering data: {exc}")
                     return  # raise?
