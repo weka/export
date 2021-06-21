@@ -17,6 +17,7 @@ import platform
 import traceback
 from multiprocessing import Process
 import yaml
+import socket
 
 import prometheus_client
 
@@ -24,7 +25,8 @@ import wekalib.signals as signals
 from collector import WekaCollector
 from lokilogs import LokiServer
 # local imports
-from wekalib.wekacluster import WekaCluster, APIException
+from wekalib.wekacluster import WekaCluster
+import wekalib.exceptions
 
 VERSION = "1.1.0"
 
@@ -50,18 +52,41 @@ def _load_config(inputfile):
 
 def prom_client(config):
 
+    error = False
+    for host in config['cluster']['hosts']:
+        try:
+            socket.gethostbyname(host)
+        except socket.gaierror:
+            log.critical("Hostname {host} not resolvable - is it in /etc/hosts or DNS?")
+            error = True
+        except Exception as exc:
+            log.critical(exc)
+            error = True
+
+    if error:
+        log.critical("Errors resolving hostnames given.  Please ensure they are in /etc/hosts or DNS and are resolvable")
+
     try:
         cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth_token_file'])
-    except APIException as exc:
-        if exc.message == "host_unreachable":
-            log.critical(f"Unable to communicate with cluster '{config['cluster']['hosts']}': {exc.message}.  Are the cluster's hostnames in /etc/hosts and/or DNS?")
-        else:
-            log.critical(f"Unable to communicate with cluster '{config['cluster']['hosts']}': {exc.message}.  Is the auth file is up-to-date?")
-        return
+    #except wekalib.exceptions.AuthFileError as exc:
+    #    log.critical(exc)
+    #    return
+    #except wekalib.exceptions.NewConnectionError as exc:
     except Exception as exc:
-        log.critical(f"Misc error creating cluster object with cluster '{config['cluster']['hosts']}': {exc}.  Is the cluster down?")
-        log.debug(traceback.format_exc())
+        log.critical(f"Unable to create Weka Cluster: {exc}")
         return
+        #log.critical(exc)
+        #return
+    #except APIException as exc:
+    #    if exc.message == "host_unreachable":
+    #        log.critical(f"Unable to communicate with cluster '{config['cluster']['hosts']}': {exc.message}.  Are the cluster's hostnames in /etc/hosts and/or DNS?")
+    #    else:
+    #        log.critical(f"Unable to communicate with cluster '{config['cluster']['hosts']}': {exc.message}.  Is the auth file is up-to-date?")
+    #    return
+    #except Exception as exc:
+    #    log.critical(f"Misc error creating cluster object with cluster '{config['cluster']['hosts']}': {exc}.  Is the cluster down?")
+    #    #log.debug(traceback.format_exc())
+    #    return
 
     # create the WekaCollector object
     collector = WekaCollector(config, cluster_obj)

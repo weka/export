@@ -20,6 +20,7 @@ import json
 from wekalib.wekacluster import WekaCluster
 from wekalib.wekaapi import WekaApi
 from wekalib.wekatime import wekatime_to_datetime
+import wekalib
 
 
 #
@@ -288,7 +289,7 @@ class WekaCollector(object):
                     self.gather()
                 except Exception as exc:
                     log.critical(f"Error gathering data: {exc}")
-                    return
+                    return  # raise?
 
             # yield for each metric 
             for metric in metric_objs.values():
@@ -378,8 +379,10 @@ class WekaCollector(object):
 
         # reset the cluster config to be sure we can talk to all the hosts
         try:
-            #cluster.refresh_config()
             cluster.initialize_async_subsystem()
+        except wekalib.exceptions.NameNotResolvable as exc:
+            log.critical(f"Names are not resolvable - are they in /etc/hosts or DNS? {exc}")
+            raise
         except Exception as exc:
             log.error(f"Cluster refresh failed on cluster '{cluster}' - check connectivity ({exc})")
             #log.error(traceback.format_exc())
@@ -645,6 +648,13 @@ class WekaCollector(object):
                 # removed drives can have null values - prom client code hates that!
                 if drive['hostname'] is None or len(drive['hostname']) == 0:
                     drive['hostname'] = "None"
+
+                if drive['vendor'] is None:
+                    drive['vendor'] = "Unknown"
+                if drive['model'] is None:
+                    drive['model'] = "Unknown"
+                if drive['serial_number'] is None:
+                    drive['serial_number'] = "Unknown"
 
                 metric_objs['drives'].add_metric(
                     [
