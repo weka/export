@@ -125,6 +125,7 @@ def prom_client(config):
 
 def configure_logging(logger, verbosity):
     loglevel = logging.INFO     # default logging level
+    libloglevel = logging.ERROR
 
     # default message formats
     console_format = "%(message)s"
@@ -133,13 +134,16 @@ def configure_logging(logger, verbosity):
     syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
 
     if verbosity == 1:
-        loglevel = logging.DEBUG
+        loglevel = logging.INFO
         console_format = "%(levelname)s:%(message)s"
         syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
-    elif verbosity > 1:
+        libloglevel = logging.INFO
+    elif verbosity >= 2:
         loglevel = logging.DEBUG
         console_format = "%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
         syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
+        libloglevel = logging.DEBUG
+
 
     # create handler to log to console
     console_handler = logging.StreamHandler()
@@ -163,8 +167,8 @@ def configure_logging(logger, verbosity):
     logger.setLevel(loglevel)
 
     logging.getLogger("wekalib").setLevel(logging.ERROR)
-    logging.getLogger("wekalib.wekaapi").setLevel(logging.DEBUG) # should leave at INFO as default
-    logging.getLogger("wekalib.wekacluster").setLevel(logging.DEBUG)
+    logging.getLogger("wekalib.wekaapi").setLevel(libloglevel) # should leave at INFO as default
+    logging.getLogger("wekalib.wekacluster").setLevel(libloglevel)
     logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR) # should leave at ERROR as default
     logging.getLogger("urllib3").setLevel(logging.ERROR)
 
