@@ -67,10 +67,30 @@ def prom_client(config):
         log.critical("Errors resolving hostnames given.  Please ensure they are in /etc/hosts or DNS and are resolvable")
         sys.exit(1)
 
+    if 'force_https' not in config['cluster']:
+        config['cluster']['force_https'] = False
+
+    if 'verify_cert' not in config['cluster']:
+        config['cluster']['verify_cert'] = True
+
     try:
-        cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth_token_file'])
+        cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth_token_file'], 
+                                  force_https=config['cluster']['force_https'], 
+                                  verify_cert=config['cluster']['verify_cert'])
+    except wekalib.exceptions.HTTPError as exc:
+        if exc.code == 403:
+            log.critical(f"Cluster returned permission error - is the userid level ReadOnly or above?")
+            return
+        log.critical(f"Cluster returned HTTP error {exc}; aborting")
+        return
+    except wekalib.exceptions.SSLError as exc:
+        log.critical(f"SSL Error: Only weka v3.10 and above support https, and force_https is set in config file.")
+        log.critical(f"SSL Error: Is this cluster < v3.10? Please verify configuration")
+        log.critical(f"Error is {exc}")
+        return
     except Exception as exc:
         log.critical(f"Unable to create Weka Cluster: {exc}")
+        log.critical(traceback.format_exc())
         return
 
     # create the WekaCollector object
@@ -105,6 +125,7 @@ def prom_client(config):
 
 def configure_logging(logger, verbosity):
     loglevel = logging.INFO     # default logging level
+    libloglevel = logging.ERROR
 
     # default message formats
     console_format = "%(message)s"
@@ -113,13 +134,16 @@ def configure_logging(logger, verbosity):
     syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
 
     if verbosity == 1:
-        loglevel = logging.DEBUG
+        loglevel = logging.INFO
         console_format = "%(levelname)s:%(message)s"
         syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
-    elif verbosity > 1:
+        libloglevel = logging.INFO
+    elif verbosity >= 2:
         loglevel = logging.DEBUG
         console_format = "%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
         syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
+        libloglevel = logging.DEBUG
+
 
     # create handler to log to console
     console_handler = logging.StreamHandler()
@@ -143,8 +167,8 @@ def configure_logging(logger, verbosity):
     logger.setLevel(loglevel)
 
     logging.getLogger("wekalib").setLevel(logging.ERROR)
-    logging.getLogger("wekalib.wekaapi").setLevel(logging.INFO) # should leave at INFO as default
-    logging.getLogger("wekalib.wekacluster").setLevel(logging.INFO)
+    logging.getLogger("wekalib.wekaapi").setLevel(libloglevel) # should leave at INFO as default
+    logging.getLogger("wekalib.wekacluster").setLevel(libloglevel)
     logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR) # should leave at ERROR as default
     logging.getLogger("urllib3").setLevel(logging.ERROR)
 
@@ -170,9 +194,9 @@ def main():
 
     configure_logging(log, args.verbosity)
 
-    #if not os.path.exists(args.configfile):
-    #    log.critical(f"Required configfile '{args.configfile}' does not exist")
-    #    sys.exit(1)
+    if not os.path.exists(args.configfile):
+        log.critical(f"Required configfile '{args.configfile}' does not exist")
+        sys.exit(1)
 
     log.debug("loading config file")
     try:
