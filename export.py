@@ -83,6 +83,11 @@ def prom_client(config):
             return
         log.critical(f"Cluster returned HTTP error {exc}; aborting")
         return
+    except wekalib.exceptions.SSLError as exc:
+        log.critical(f"SSL Error: Only weka v3.10 and above support https, and force_https is set in config file.")
+        log.critical(f"SSL Error: Is this cluster < v3.10? Please verify configuration")
+        log.critical(f"Error is {exc}")
+        return
     except Exception as exc:
         log.critical(f"Unable to create Weka Cluster: {exc}")
         log.critical(traceback.format_exc())
