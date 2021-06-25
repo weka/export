@@ -67,10 +67,25 @@ def prom_client(config):
         log.critical("Errors resolving hostnames given.  Please ensure they are in /etc/hosts or DNS and are resolvable")
         sys.exit(1)
 
+    if 'force_https' not in config['cluster']:
+        config['cluster']['force_https'] = False
+
+    if 'verify_cert' not in config['cluster']:
+        config['cluster']['verify_cert'] = True
+
     try:
-        cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth_token_file'])
+        cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth_token_file'], 
+                                  force_https=config['cluster']['force_https'], 
+                                  verify_cert=config['cluster']['verify_cert'])
+    except wekalib.exceptions.HTTPError as exc:
+        if exc.code == 403:
+            log.critical(f"Cluster returned permission error - is the userid level ReadOnly or above?")
+            return
+        log.critical(f"Cluster returned HTTP error {exc}; aborting")
+        return
     except Exception as exc:
         log.critical(f"Unable to create Weka Cluster: {exc}")
+        log.critical(traceback.format_exc())
         return
 
     # create the WekaCollector object
@@ -143,8 +158,8 @@ def configure_logging(logger, verbosity):
     logger.setLevel(loglevel)
 
     logging.getLogger("wekalib").setLevel(logging.ERROR)
-    logging.getLogger("wekalib.wekaapi").setLevel(logging.INFO) # should leave at INFO as default
-    logging.getLogger("wekalib.wekacluster").setLevel(logging.INFO)
+    logging.getLogger("wekalib.wekaapi").setLevel(logging.DEBUG) # should leave at INFO as default
+    logging.getLogger("wekalib.wekacluster").setLevel(logging.DEBUG)
     logging.getLogger("wekalib.sthreads").setLevel(logging.ERROR) # should leave at ERROR as default
     logging.getLogger("urllib3").setLevel(logging.ERROR)
 
@@ -170,9 +185,9 @@ def main():
 
     configure_logging(log, args.verbosity)
 
-    #if not os.path.exists(args.configfile):
-    #    log.critical(f"Required configfile '{args.configfile}' does not exist")
-    #    sys.exit(1)
+    if not os.path.exists(args.configfile):
+        log.critical(f"Required configfile '{args.configfile}' does not exist")
+        sys.exit(1)
 
     log.debug("loading config file")
     try:
