@@ -165,6 +165,8 @@ class WekaCollector(object):
             metric_objs[name] = GaugeMetricFamily(name, parms[0], labels=parms[1])
         metric_objs['weka_protection'] = GaugeMetricFamily('weka_protection', 'Weka Data Protection Status',
                                                            labels=["cluster", 'numFailures'])
+        metric_objs['weka_rebuild'] = GaugeMetricFamily('weka_rebuild', 'Weka Rebuild Progress',
+                                                           labels=["cluster"])
         metric_objs['weka_fs'] = GaugeMetricFamily('weka_fs', 'Filesystem information', labels=['cluster', 'name', 'stat'])
         metric_objs['weka_stats_gauge'] = GaugeMetricFamily('weka_stats',
                                                             'WekaFS statistics. For more info refer to: https://docs.weka.io/usage/statistics/list-of-statistics',
@@ -293,6 +295,7 @@ class WekaCollector(object):
                     sys.exit(1)
                 except Exception as exc:
                     log.critical(f"Error gathering data: {exc}")
+                    log.critical(traceback.format_exc())
                     return  # raise?
 
             # yield for each metric 
@@ -451,7 +454,8 @@ class WekaCollector(object):
             'ops': ['FRONTEND'],
             'ops_driver': ['FRONTEND'],
             'ops_nfs': ['COMPUTE'],  # not sure about this one
-            'ssd': ['DRIVES']
+            'ssd': ['DRIVES'],
+            'network': ['FRONTEND', 'COMPUTE', 'DRIVES']
         }
 
         # schedule a bunch of data gather queries
@@ -605,6 +609,9 @@ class WekaCollector(object):
                 metric_objs['weka_protection'].add_metric(
                     [str(cluster), str(protectionStateList[index]["numFailures"])],
                     protectionStateList[index]["percent"])
+
+            metric_objs['weka_rebuild'].add_metric([str(cluster)], rebuildStatus["progressPercent"])
+            
 
         except:
             log.error("error processing protection status for cluster {}".format(str(cluster)))
