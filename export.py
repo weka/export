@@ -73,10 +73,13 @@ def prom_client(config):
     if 'verify_cert' not in config['cluster']:
         config['cluster']['verify_cert'] = True
 
+    log.info(f"Timeout set to {config['exporter']['timeout']} secs")
+
     try:
         cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth_token_file'], 
                                   force_https=config['cluster']['force_https'], 
-                                  verify_cert=config['cluster']['verify_cert'])
+                                  verify_cert=config['cluster']['verify_cert'], 
+                                  timeout=config['exporter']['timeout'])
     except wekalib.exceptions.HTTPError as exc:
         if exc.code == 403:
             log.critical(f"Cluster returned permission error - is the userid level ReadOnly or above?")

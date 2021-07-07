@@ -7,6 +7,8 @@ exporter:
   listen_port: 8150
   loki_host: localhost
   loki_port: 3100
+  timeout: 10.0
+  node_groupsize: 100
 
 # cluster section - info about the weka cluster we want to export data from:
 cluster:
@@ -17,6 +19,7 @@ cluster:
     - vweka03
   force_https: True   # only 3.10+ clusters support https
   verify_cert: False  # default cert cannot be verified
+
   # auth_token_file can be an absolute path, relative path, or filename.  
   #   If just a filename it will be searched for in ".", "~/.weka", and "./.weka"
   #   This file can be generated with the 'weka user login' command and copied to where we are running
@@ -257,5 +260,5 @@ stats:
 #    SSD_WRITES: iops
 #    SSD_WRITE_ERRORS: count
 #    SSD_WRITE_LATENCY: microsecs
-  network:
-     PUMPS_TXQ_FULL: times
+#  network:
+#    PUMPS_TXQ_FULL: times

@@ -18,7 +18,6 @@ import json
 import sys
 
 # local imports
-from wekalib.wekacluster import WekaCluster
 from wekalib.wekaapi import WekaApi
 from wekalib.wekatime import wekatime_to_datetime
 import wekalib
@@ -113,6 +112,7 @@ class WekaCollector(object):
         self.clusterdata = {}
         self.threaderror = False
         self.api_stats = {}
+        self.node_groupsize = config['exporter']['node_groupsize']
 
         self.cluster = cluster_obj
 
@@ -288,6 +288,7 @@ class WekaCollector(object):
 
             if should_gather:
                 log.info("gathering")
+                log.info(f"node_groupsize = {self.node_groupsize}")
                 try:
                     self.gather()
                 except wekalib.exceptions.NameNotResolvable as exc:
@@ -473,12 +474,12 @@ class WekaCollector(object):
 
             log.debug(f"category={category}, stat_dict={stat_dict}")
             for stat, command in stat_dict.items():
-                step = 100
-                for i in range(0, len(query_nodes), step):
+                # self.node_groupsize is the max # of nodes we'll query for in any one API call
+                for i in range(0, len(query_nodes), self.node_groupsize):
                     import copy
                     newcmd = copy.deepcopy(command)  # make sure to copy it
-                    newcmd["parms"]["node_ids"] = copy.deepcopy(query_nodes[i:i + step])  # make sure to copy it
-                    # log.debug(f"{i}: {i+step}, {cluster.name} {query_nodes[i:i+step]}" )  # debugging
+                    newcmd["parms"]["node_ids"] = copy.deepcopy(query_nodes[i:i + self.node_groupsize])  # make sure to copy it
+                    # log.debug(f"{i}: {i+self.node_groupsize}, {cluster.name} {query_nodes[i:i+self.node_groupsize]}" )  # debugging
                     log.debug(f"scheduling {cluster.name} {newcmd['parms']}")  # debugging
                     # schedule more asychronous api calls...
                     try:
