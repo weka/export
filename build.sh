@@ -1,5 +1,5 @@
 TOOL=export
-pyinstaller --onefile ${TOOL}.py
+pyinstaller --hidden-import wekalib --onefile ${TOOL}.py
 
 TARGET=tarball/$TOOL
 mkdir -p $TARGET
