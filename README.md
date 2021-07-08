@@ -4,6 +4,10 @@ A Prometheus Metrics exporter for WekaFS. Gathers metrics and statistics from We
 
 Full Weka documentation is on http://docs.weka.io
 
+Version 1.2.3:
+
+Some tuning tweaks, most notably the addition of `timeout:` and `node_groupsize:` to the `exporter:` section of the config file.   `timeout:` sets the API timeout period (increase it if you're getting API call timeouts.  Recommended max is 30.0 to 40.0).  `node_groupsize:` sets the number of nodes to fetch data for in any one API.  Lowering this value should shorten the time it takes to complete an API call, but will perform more API calls per data collection.   The goal in tuning these is to keep the total data collection time under 50 seconds, as Prometheus (by default) collects every 60s.
+
 Version 1.1.0:
 
 ## What's new
@@ -19,6 +23,8 @@ exporter:
   listen_port: 8001
   loki_host: localhost
   loki_port: 3100
+  timeout: 10.0
+  node_groupsize: 100
 
 cluster:
   hosts:
