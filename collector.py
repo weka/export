@@ -438,16 +438,25 @@ class WekaCollector(object):
         # be simplistic at first... let's just gather on a subset of nodes each query
         # all_nodes = backend_nodes + client_nodes    # concat both lists
 
-        node_maps = {"FRONTEND": [], "COMPUTE": [], "DRIVES": [], "MANAGEMENT": []}  # initial state of maps
+        #
+        # new tactic - use all hosts for their own stats... node_maps is a dict of roles, each with a dict of host:[nids]
+        #
+        #
+
+        #node_maps = {"FRONTEND": [], "COMPUTE": [], "DRIVES": [], "MANAGEMENT": []}  # initial state of maps
+        node_maps = {"FRONTEND": {}, "COMPUTE": {}, "DRIVES": {}, "MANAGEMENT": {}}  # initial state of maps
 
         # log.debug(f'{weka_maps["node-role"]}')
 
         for node in weka_maps["node-role"]:  # node == "NodeId<xx>"
             for role in weka_maps['node-role'][node]:
                 nid = int(node.split('<')[1].split('>')[0])  # make nodeid numeric
-                node_maps[role].append(nid)
+                hostname = weka_maps["node-host"][node]
+                if hostname not in node_maps[role]:
+                    node_maps[role][hostname] = list()
+                node_maps[role][hostname].append(nid) # needs to be dict of host:[nid]
 
-        # log.debug(f"{cluster.name} {node_maps}")
+        #log.debug(f"{cluster.name} {json.dumps(node_maps, indent=4)}")
 
         # find a better place to define this... for now here is good (vince)
         category_nodetypes = {
@@ -462,38 +471,50 @@ class WekaCollector(object):
         # schedule a bunch of data gather queries
         for category, stat_dict in self.get_commandlist().items():
 
-            category_nodes = []
+            category_nodes = {}     # dict now... host:[nid]
             # log.error(f"{cluster.name} category is: {category} {category_nodetypes[category]}")
             for nodetype in category_nodetypes[category]:  # nodetype is FRONTEND, COMPUTE, DRIVES, MANAGEMENT
-                category_nodes += node_maps[nodetype]
+                log.debug(f"nodetype={nodetype}, node_maps[nodetype] = {node_maps[nodetype]}")
+                for host, nodes in node_maps[nodetype].items():
+                    if host in category_nodes.keys():
+                        category_nodes[host] = list(set().union(category_nodes[host],nodes))   # merge nodes lists uniquely
+                    else:
+                        category_nodes[host] = nodes
 
-            #log.debug(f"{cluster.name} cat nodes: {category} {category_nodes}")  # debugging
+            log.debug(f"{cluster.name} cat nodes: {category} {json.dumps(category_nodes, indent=4)}")  # debugging
 
-            query_nodes = list(
-                set(category_nodes.copy()))  # make the list unique so we don't ask for the same data muliple times
+            # not sure what to do here... think...
+            #query_nodes = list(
+            #    set(category_nodes.copy()))  # make the list unique so we don't ask for the same data muliple times
 
             log.debug(f"category={category}, stat_dict={stat_dict}")
             for stat, command in stat_dict.items():
-                # self.node_groupsize is the max # of nodes we'll query for in any one API call
-                for i in range(0, len(query_nodes), self.node_groupsize):
+                for hostname, nids in category_nodes.items():    # hostinfo_dict is host:[nid]
                     import copy
                     newcmd = copy.deepcopy(command)  # make sure to copy it
-                    newcmd["parms"]["node_ids"] = copy.deepcopy(query_nodes[i:i + self.node_groupsize])  # make sure to copy it
+                    #newcmd["parms"]["node_ids"] = copy.deepcopy(query_nodes[i:i + self.node_groupsize])  # make sure to copy it
+                    newcmd["parms"]["node_ids"] = copy.deepcopy(nids)  # make sure to copy it
                     # log.debug(f"{i}: {i+self.node_groupsize}, {cluster.name} {query_nodes[i:i+self.node_groupsize]}" )  # debugging
                     log.debug(f"scheduling {cluster.name} {newcmd['parms']}")  # debugging
+
+                    hostobj = cluster.get_hostobj_byname(hostname)
+
                     # schedule more asychronous api calls...
                     try:
-                        cluster.async_call_api((stat, category), command['method'], command['parms'])
+                        hostobj.async_call_api((stat, category), newcmd['method'], newcmd['parms'])   # host.async_call_api instead?
                     except:
                         log.error("gather(): error scheduling thread wekastat for cluster {}".format(str(cluster)))
 
 
         log.debug("******************************** WAITING ON ASYNC PROCESS *************************************")
-        results = cluster.wait_async()    # wait for api calls to complete (returns APICall objects)
+        #results = cluster.wait_async()    # wait for api calls to complete (returns APICall objects)
+        for hostname in cluster.hosts():
+            hostobj = cluster.get_hostobj_byname(hostname)
+            results = hostobj.wait_async()    # wait for api calls to complete (returns APICall objects)
+            # move results into the wekadata structure
+            self.store_results(cluster, results)
         log.debug("******************************** WAITING ON ASYNC PROCESS COMPLETE *************************************")
 
-        # move results into the wekadata structure
-        self.store_results(cluster, results)
 
         elapsed = time.time() - start_time
         log.debug(f"gather for cluster {cluster} complete.  Elapsed time {elapsed}")
