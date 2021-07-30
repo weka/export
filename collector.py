@@ -16,6 +16,7 @@ import logging.handlers
 from logging import debug, info, warning, error, critical, getLogger, DEBUG
 import json
 import sys
+from async import Async
 
 # local imports
 from wekalib.wekaapi import WekaApi
@@ -113,6 +114,8 @@ class WekaCollector(object):
         self.threaderror = False
         self.api_stats = {}
         self.node_groupsize = config['exporter']['node_groupsize']
+        self.subprocesses = config['exporter']['subprocesses']
+        self.threads_per_proc = config['exporter']['threads_per_proc']
 
         self.cluster = cluster_obj
 
@@ -184,83 +187,6 @@ class WekaCollector(object):
                                                   labels=['cluster', 'host_name', 'host_id', 'node_id', 'drive_id',
                                                           'vendor', 'model', 'serial', 'size', 'status', 'life'])
 
-    """
-    def old_collect(self):
-        with self._access_lock:  # be thread-safe - if we get called from simultaneous scrapes... could be ugly
-
-            log.debug("Entering collect() routine")
-            second_pass = False
-            self.api_stats['num_calls'] = 0
-            should_gather = False
-            start_time = time.time()
-            secs_since_last_min = start_time % 60
-            secs_to_next_min = 60 - secs_since_last_min
-
-
-            #if self.collect_time is not None:
-            #    log.info(f"self.collect_time is {self.collect_time} {start_time - self.collect_time }")
-
-            # first time being called?   force gathering info
-            if self.collect_time is None:
-                log.debug("never gathered before")
-                self.gather_timestamp = start_time  # we've not collected before
-                should_gather = True
-                log.info("gathering")
-                self.gather()
-
-            elif start_time - self.collect_time > 5:    # always calls twice; only gather if it's been a while since last call
-
-                #log.info( "secs_since_last_min {}, secs_to_next_min {}".format(int(secs_since_last_min), int(secs_to_next_min)))
-                # has a collection been done in this minute? (weka updates at the top of the minute)
-                secs_since_last_gather = start_time - self.gather_timestamp
-                #log.info("secs_since_last_gather {}".format(int(secs_since_last_gather)))
-
-                # has it been more than a min, or have we not gathered since the top of the minute?
-                #if secs_since_last_gather > 60 or secs_since_last_gather > secs_since_last_min:
-                #    should_gather = True
-                #    log.debug("more than a minute since last gather or in new min")
-                should_gather = True
-
-                if secs_to_next_min < 10 and should_gather:  # it takes ~10 secs to gather, and we don't want to cross minutes
-                    log.info("sleeping {} seconds".format(int(secs_to_next_min + 1)))
-                    time.sleep(secs_to_next_min + 1)  # take us past the top of the minute so we get fresh stats
-                    start_time = time.time()  # update now because we slept
-
-                should_gather=True  # testing
-                if should_gather:
-                    log.info("gathering")
-                    self.gather_timestamp = start_time
-                    try:
-                        self.gather()
-                    except Exception as exc:
-                        log.critical(f"Error gathering data: {exc}")
-                        return
-            else:
-                second_pass = True
-
-
-            # yield for each metric 
-            for metric in metric_objs.values():
-                yield metric
-
-            # report time if we gathered, otherwise, it's meaningless
-            if should_gather:
-                elapsed = time.time() - start_time
-                self.last_elapsed = elapsed
-            else:
-                elapsed = self.last_elapsed
-
-            yield GaugeMetricFamily('weka_collect_seconds', 'Total Time spent in Prometheus collect', value=elapsed)
-            yield GaugeMetricFamily('weka_collect_apicalls', 'Total number of api calls',
-                                    value=self.api_stats['num_calls'])
-
-            if not second_pass:
-                log.info(
-                    f"stats returned. total time = {round(elapsed, 2)}s {self.api_stats['num_calls']} api calls made. {time.asctime()}")
-            self.collect_time = time.time()
-    """
-
-
     def collect(self):
 
         #lock_starttime = time.time()
@@ -295,8 +221,8 @@ class WekaCollector(object):
                     log.critical(f"Unable to resolve names; terminating")
                     sys.exit(1)
                 except Exception as exc:
-                    log.critical(f"Error gathering data: {exc}")
-                    log.critical(traceback.format_exc())
+                    log.critical(f"Error gathering data: {exc}, {traceback.format_exc()}")
+                    #log.critical(traceback.format_exc())
                     return  # raise?
 
             # yield for each metric 
@@ -342,8 +268,8 @@ class WekaCollector(object):
                     # then we already have data for this category - must be a lot of nodes (>100)
         except Exception as exc:
             # just log it, as we're probably in a thread
-            log.critical(f"Exception caught: {exc}")
-            log.debug(traceback.format_exc())
+            log.critical(f"Exception caught: {exc}, {traceback.format_exc()}")
+            #log.debug(traceback.format_exc())
 
 
     def store_results(self, cluster, results):
@@ -387,7 +313,7 @@ class WekaCollector(object):
 
         # reset the cluster config to be sure we can talk to all the hosts
         try:
-            cluster.initialize_async_subsystem()
+            cluster.refresh()
         except wekalib.exceptions.NameNotResolvable as exc:
             log.critical(f"Names are not resolvable - are they in /etc/hosts or DNS? {exc}")
             raise
@@ -396,21 +322,24 @@ class WekaCollector(object):
             #log.error(traceback.format_exc())
             return
 
+        # set up async api calling subsystem
+        self.async = Async(cluster, self.subprocesses, self.threads_per_proc)
 
-        # get info from weka cluster - asynchonously - each host has a submission_thread, so we're just queueing here
+        # get info from weka cluster - these are quick calls
         for stat, command in self.WEKAINFO.items():
-            cluster.async_call_api((stat,None), command['method'], command['parms'])
+            wekadata[stat] = cluster.call_api(command['method'], command['parms'])
+            self.api_stats['num_calls'] += 1
 
-        log.debug("******************************** WAITING ON ASYNC PROCESS *************************************")
-        results = cluster.wait_async()    # wait for api calls to complete (returns APICall objects)
-        log.debug("******************************** ASYNC PROCESS COMPLETE ***************************************")
+        #log.debug("******************************** WAITING ON ASYNC PROCESS *************************************")
+        #results = cluster.wait_async()    # wait for api calls to complete (returns APICall objects)
+        #log.debug("******************************** ASYNC PROCESS COMPLETE ***************************************")
 
-        if len(results) == 0:
-            log.critical(f"api unable to contact cluster {cluster}; aborting gather")
-            return
+        #if len(results) == 0:
+        #    log.critical(f"api unable to contact cluster {cluster}; aborting gather")
+        #    return
 
         # move results into the wekadata structure
-        self.store_results(cluster, results)
+        #self.store_results(cluster, results)
 
 
         # build maps - need this for decoding data, not collecting it.
@@ -481,7 +410,7 @@ class WekaCollector(object):
                     else:
                         category_nodes[host] = nodes
 
-            log.debug(f"{cluster.name} cat nodes: {category} {json.dumps(category_nodes, indent=4)}")  # debugging
+            #log.debug(f"{cluster.name} cat nodes: {category} {json.dumps(category_nodes, indent=4)}")  # debugging
 
             # not sure what to do here... think...
             #query_nodes = list(
@@ -492,29 +421,39 @@ class WekaCollector(object):
                 for hostname, nids in category_nodes.items():    # hostinfo_dict is host:[nid]
                     import copy
                     newcmd = copy.deepcopy(command)  # make sure to copy it
-                    #newcmd["parms"]["node_ids"] = copy.deepcopy(query_nodes[i:i + self.node_groupsize])  # make sure to copy it
                     newcmd["parms"]["node_ids"] = copy.deepcopy(nids)  # make sure to copy it
-                    # log.debug(f"{i}: {i+self.node_groupsize}, {cluster.name} {query_nodes[i:i+self.node_groupsize]}" )  # debugging
-                    log.debug(f"scheduling {cluster.name} {newcmd['parms']}")  # debugging
 
-                    hostobj = cluster.get_hostobj_byname(hostname)
+                    #hostobj = cluster.get_hostobj_byname(hostname)
+                    #log.debug(f"scheduling {hostname} {newcmd['parms']}")  # debugging
 
                     # schedule more asychronous api calls...
                     try:
-                        hostobj.async_call_api((stat, category), newcmd['method'], newcmd['parms'])   # host.async_call_api instead?
+                        #hostobj.async_call_api((stat, category), newcmd['method'], newcmd['parms'])   # host.async_call_api instead?
+                        self.async.submit(hostname, category, stat, newcmd['method'], newcmd['parms'])
+                        self.api_stats['num_calls'] += 1
                     except:
                         log.error("gather(): error scheduling thread wekastat for cluster {}".format(str(cluster)))
+                        print(traceback.format_exc())
+                        sys.exit(1)
 
 
         log.debug("******************************** WAITING ON ASYNC PROCESS *************************************")
         #results = cluster.wait_async()    # wait for api calls to complete (returns APICall objects)
-        for hostname in cluster.hosts():
-            hostobj = cluster.get_hostobj_byname(hostname)
-            results = hostobj.wait_async()    # wait for api calls to complete (returns APICall objects)
-            # move results into the wekadata structure
-            self.store_results(cluster, results)
-        log.debug("******************************** WAITING ON ASYNC PROCESS COMPLETE *************************************")
+        #for hostname in cluster.hosts():
+        #    hostobj = cluster.get_hostobj_byname(hostname)
+        #    results = hostobj.wait_async()    # wait for api calls to complete (returns APICall objects)
+        #    # move results into the wekadata structure
+        #    self.store_results(cluster, results)
 
+        for result in self.async.wait():
+            if not result.exception:
+                if result.category not in wekadata:
+                    wekadata[result.category] = dict()
+                if result.stat not in wekadata[result.category]:
+                    wekadata[result.category][result.stat] = list()
+                #log.debug(f"result = {result.result}")
+                wekadata[result.category][result.stat] += result.result
+        log.debug("******************************** WAITING ON ASYNC PROCESS COMPLETE *************************************")
 
         elapsed = time.time() - start_time
         log.debug(f"gather for cluster {cluster} complete.  Elapsed time {elapsed}")
@@ -771,6 +710,11 @@ class WekaCollector(object):
                                     log.error("error processing io sizes for cluster {}".format(str(cluster)))
             else:
                 log.debug(f"category {category} is NOT in wekadata") 
+
+        # shut down the child processes
+        log.debug(f"shutting down children")
+        del self.async
+
 
         log.info(f"Complete cluster={cluster}")
 
