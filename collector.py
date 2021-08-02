@@ -113,9 +113,8 @@ class WekaCollector(object):
         self.clusterdata = {}
         self.threaderror = False
         self.api_stats = {}
-        self.node_groupsize = config['exporter']['node_groupsize']
-        self.subprocesses = config['exporter']['subprocesses']
-        self.threads_per_proc = config['exporter']['threads_per_proc']
+        self.max_procs = config['exporter']['max_procs']
+        self.max_threads_per_proc = config['exporter']['max_threads_per_proc']
 
         self.cluster = cluster_obj
 
@@ -214,7 +213,6 @@ class WekaCollector(object):
 
             if should_gather:
                 log.info("gathering")
-                log.info(f"node_groupsize = {self.node_groupsize}")
                 try:
                     self.gather()
                 except wekalib.exceptions.NameNotResolvable as exc:
@@ -323,7 +321,7 @@ class WekaCollector(object):
             return
 
         # set up async api calling subsystem
-        self.async = Async(cluster, self.subprocesses, self.threads_per_proc)
+        self.async = Async(cluster, self.max_procs, self.max_threads_per_proc)
 
         # get info from weka cluster - these are quick calls
         for stat, command in self.WEKAINFO.items():
