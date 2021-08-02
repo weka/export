@@ -67,12 +67,21 @@ def prom_client(config):
     if error:
         log.critical("Errors resolving hostnames given.  Please ensure they are in /etc/hosts or DNS and are resolvable")
         sys.exit(1)
+    elif 'cluster' not in config:
+        log.error(f"'cluster:' stanza missing from .yml file - version mismatch between .yml and exporter version?")
+        sys.exit(1)
+    elif 'exporter' not in config:
+        log.error(f"'exporter:' stanza missing from .yml file - version mismatch between .yml and exporter version?")
+        sys.exit(1)
 
-    if 'force_https' not in config['cluster']:
+    if 'force_https' not in config['cluster']:  # allow defaults for these
         config['cluster']['force_https'] = False
 
     if 'verify_cert' not in config['cluster']:
         config['cluster']['verify_cert'] = True
+
+    if 'timeout' not in config['exporter']:
+        config['exporter']['timeout'] = 10
 
     log.info(f"Timeout set to {config['exporter']['timeout']} secs")
 
