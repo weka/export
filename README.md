@@ -11,6 +11,8 @@ Be sure to have about 1 core available per process for best results.
 
 See the export.yml file for details on syntax changes.
 
+The `node_groupsize:` added in v1.2.3 has been removed in favor of the above.  Apologies for the inconvience, but the 1.3.0 algorithm works better.
+
 Version 1.2.3:
 
 Some tuning tweaks, most notably the addition of `timeout:` and `node_groupsize:` to the `exporter:` section of the config file.   `timeout:` sets the API timeout period (increase it if you're getting API call timeouts.  Recommended max is 30.0 to 40.0).  `node_groupsize:` sets the number of nodes to fetch data for in any one API.  Lowering this value should shorten the time it takes to complete an API call, but will perform more API calls per data collection.   The goal in tuning these is to keep the total data collection time under 50 seconds, as Prometheus (by default) collects every 60s.
