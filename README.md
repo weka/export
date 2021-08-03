@@ -4,6 +4,17 @@ A Prometheus Metrics exporter for WekaFS. Gathers metrics and statistics from We
 
 Full Weka documentation is on http://docs.weka.io
 
+Version 1.3.0:
+Added additional scaling properties.  These are controlled with the `max_procs:` and  `max_threads_per_proc:` parameters in the `exporter:` section of the config file.   Up to max_procs subprocesses will be spawned to help scale api load, each with up to max_threads_per_proc threads.   The defaults should work for most clusters, as it will only spawn 1 process for each max_threads_per_proc hosts in the cluster.  For example, if you have 80 weka servers and 200 clients, and max_threads_per_proc is the default 100, it would spawn 3 processes (280 total hosts / 100 threads, rounded up).   One can increase the number of processes used (up to max_procs) by lowering max_threads_per_proc.  For example, the same 280 total hosts with max_threads_per_proc=50 would spawn 6 processes (280 total hosts / 50 threads, rounded up).
+
+Conversely, small clusters do not require any additional resources.  For example, a cluster with 10 servers and 10 clients will spawn only 1 process with 20 threads.  ie: max_procs and max_thread_per_proc really are maximums.
+
+Be sure to have about 1 core available per process for best results.
+
+See the export.yml file for details on syntax changes.
+
+The `node_groupsize:` added in v1.2.3 has been removed in favor of the above.  Apologies for the inconvience, but the 1.3.0 algorithm works better.
+
 Version 1.2.3:
 
 Some tuning tweaks, most notably the addition of `timeout:` and `node_groupsize:` to the `exporter:` section of the config file.   `timeout:` sets the API timeout period (increase it if you're getting API call timeouts.  Recommended max is 30.0 to 40.0).  `node_groupsize:` sets the number of nodes to fetch data for in any one API.  Lowering this value should shorten the time it takes to complete an API call, but will perform more API calls per data collection.   The goal in tuning these is to keep the total data collection time under 50 seconds, as Prometheus (by default) collects every 60s.
@@ -19,19 +30,24 @@ With this new version, you'll have to run another instance for each Weka Cluster
 Some new sections have been added to the .yml file as a result of this:
 
 ```
+# exporter section - info about how we're going to run
 exporter:
   listen_port: 8001
-  loki_host: localhost
+  loki_host: loki
   loki_port: 3100
   timeout: 10.0
-  node_groupsize: 100
+  max_procs: 8
+  max_threads_per_proc: 100
 
+# cluster section - info about the weka cluster we want to export data from:
 cluster:
-  hosts:
-    - weka01
-    - weka02
-    - weka03
   auth_token_file: auth-token.json
+  hosts:
+    - vweka01
+    - vweka02
+    - vweka03
+  force_https: False   # only 3.10+ clusters support https
+  verify_cert: False  # default cert cannot be verified
 ```
 
 The `exporter` section describes global settings for the export program itself, such as what port to listen on and where to find grafana/loki.

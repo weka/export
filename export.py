@@ -28,7 +28,8 @@ from lokilogs import LokiServer
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "1.2.3"
+VERSION = "1.3.0"
+#VERSION = "experimental"
 
 # set the root log
 log = logging.getLogger()
@@ -66,12 +67,21 @@ def prom_client(config):
     if error:
         log.critical("Errors resolving hostnames given.  Please ensure they are in /etc/hosts or DNS and are resolvable")
         sys.exit(1)
+    elif 'cluster' not in config:
+        log.error(f"'cluster:' stanza missing from .yml file - version mismatch between .yml and exporter version?")
+        sys.exit(1)
+    elif 'exporter' not in config:
+        log.error(f"'exporter:' stanza missing from .yml file - version mismatch between .yml and exporter version?")
+        sys.exit(1)
 
-    if 'force_https' not in config['cluster']:
+    if 'force_https' not in config['cluster']:  # allow defaults for these
         config['cluster']['force_https'] = False
 
     if 'verify_cert' not in config['cluster']:
         config['cluster']['verify_cert'] = True
+
+    if 'timeout' not in config['exporter']:
+        config['exporter']['timeout'] = 10
 
     log.info(f"Timeout set to {config['exporter']['timeout']} secs")
 
@@ -79,6 +89,7 @@ def prom_client(config):
         cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth_token_file'], 
                                   force_https=config['cluster']['force_https'], 
                                   verify_cert=config['cluster']['verify_cert'], 
+                                  backends_only=False,
                                   timeout=config['exporter']['timeout'])
     except wekalib.exceptions.HTTPError as exc:
         if exc.code == 403:
@@ -141,7 +152,11 @@ def configure_logging(logger, verbosity):
         console_format = "%(levelname)s:%(message)s"
         syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
         libloglevel = logging.INFO
-    elif verbosity >= 2:
+    elif verbosity == 2:
+        loglevel = logging.DEBUG
+        console_format = "%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
+        syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
+    elif verbosity > 2:
         loglevel = logging.DEBUG
         console_format = "%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
         syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
@@ -176,8 +191,8 @@ def configure_logging(logger, verbosity):
     logging.getLogger("urllib3").setLevel(logging.ERROR)
 
     # local modules
-    logging.getLogger("collector").setLevel(logging.INFO)
-    logging.getLogger("lokilogs").setLevel(logging.INFO)
+    logging.getLogger("collector").setLevel(loglevel)
+    logging.getLogger("lokilogs").setLevel(loglevel)
 
 
 def main():
