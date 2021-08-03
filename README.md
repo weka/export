@@ -30,19 +30,24 @@ With this new version, you'll have to run another instance for each Weka Cluster
 Some new sections have been added to the .yml file as a result of this:
 
 ```
+# exporter section - info about how we're going to run
 exporter:
   listen_port: 8001
-  loki_host: localhost
+  loki_host: loki
   loki_port: 3100
   timeout: 10.0
-  node_groupsize: 100
+  max_procs: 8
+  max_threads_per_proc: 100
 
+# cluster section - info about the weka cluster we want to export data from:
 cluster:
-  hosts:
-    - weka01
-    - weka02
-    - weka03
   auth_token_file: auth-token.json
+  hosts:
+    - vweka01
+    - vweka02
+    - vweka03
+  force_https: False   # only 3.10+ clusters support https
+  verify_cert: False  # default cert cannot be verified
 ```
 
 The `exporter` section describes global settings for the export program itself, such as what port to listen on and where to find grafana/loki.
