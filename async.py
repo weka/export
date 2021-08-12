@@ -27,6 +27,8 @@ class Job(object):
         self.times_in_q = 1
 
 
+die_mf = Job(None, None, None, None, None)
+
 # this is a hidden class
 class SlaveThread(object):
     def __init__(self, cluster, outputq):
@@ -81,6 +83,7 @@ class SlaveThread(object):
                 log.info(f"Exception recieved on host {job.hostname}:{exc}")
 
 
+            # this will send back the above exeptions as well as good results
             self.outputq.put(job)
             self.inputq.task_done()
 
@@ -95,7 +98,7 @@ class SlaveThread(object):
 
 
 
-# this is a hidden class
+# Start a process that will have lots of threads
 class SlaveProcess(object):
     def __init__(self, cluster, num_threads, outputq):
         self.cluster = cluster
@@ -106,6 +109,7 @@ class SlaveProcess(object):
         self.slavesthreads = list()
         self.num_threads = num_threads
 
+        # actually start the process
         self.proc = multiprocessing.Process(target=self.slave_process, args=(cluster,), daemon=True)
         self.proc.start()
 
@@ -116,6 +120,7 @@ class SlaveProcess(object):
         self.queuesize += 1
 
 
+    # this is the main loop of the process created above
     def slave_process(self, cluster):
         """ processes API call requests asychronously - runs in a sub-process (not thread) """
         self.slavethreads = list()
@@ -138,20 +143,33 @@ class SlaveProcess(object):
             #log.debug(f"got job from queue, {job.hostname}, {job.category}, {job.stat}")
 
             if job.hostname is None:
-                #self.log_stats()
-                #log.info(f"thread bucket distribution: {slavestats}")
-                #log.info(f"thread bucket hostname dist: {hostname_tracker}")
-                die_mf = Job(None, None, None, None, None)
+                #die_mf = Job(None, None, None, None, None)
                 for slave in self.slavethreads:
+                    if not slave.thread.is_alive():
+                        log.error(f"a thread is already dead?")
+                        continue
+                    # we want to make sure they're done before we kill them
                     slave.submit(die_mf)
-                    slave.thread.join()    # wait for it to die
+                    # do we need to wait for the queue to drain?  Is that even a good idea?
+
+                    # have to leave a lot of time in case it has a full inputq
+                    slave.thread.join(timeout=60.0)    # wait for it to die
+                    if slave.thread.is_alive():
+                        log.error(f"a thread didn't die!")
                 del self.inputq
                 return  # Goodbye, cruel world!
+                # all are daemon threads, so when this process dies, so do all the threads
 
+            # check here to make sure we can get the host object; if not, toss the job - we won't be able to call the api anyway
             hostobj = cluster.get_hostobj_byname(job.hostname)
 
             if hostobj is None:
-                log.debug(f"error on hostname {job.hostname}, {job.parms}")
+                log.error(f"error on hostname {job.hostname}, {job.parms}")
+                job.result = wekalib.exceptions.APIError(f"{job.hostname}: (NOHOST) Host object not found") # send as APIError
+                job.exception = True
+                self.outputq.put(job)       # say it didn't work
+                self.inputq.task_done()     # complete the item on the inputq so parent doesn't hang
+                continue
 
             # new stuff
             try:
@@ -160,7 +178,7 @@ class SlaveProcess(object):
                 self.bucket_array.append(job.hostname)
                 this_hash = self.bucket_array.index(job.hostname)
 
-            bucket = this_hash % len(self.slavesthreads)    # if on-demand, how to hash?
+            bucket = this_hash % len(self.slavesthreads)
 
 
             if bucket not in slavestats:
@@ -170,18 +188,15 @@ class SlaveProcess(object):
 
             if job.hostname not in hostname_tracker:
                 hostname_tracker[job.hostname] = bucket
-                # could start thread here on demand...
-                # ie:
-                #self.slavesthreads.append(SlaveThread(self.cluster, self.outputq))
-                # need to make sure len(self.slavethreads) <= num_threads?
-                # what happens if it's over num_threads?  or how to make sure it never exceeds num_threads?
             elif hostname_tracker[job.hostname] != bucket:
                 log.info(f"bucket changed for {job.hostname} from {hostname_tracker[job.hostname]} to {bucket}")
 
 
-            #log.info(f"thread bucket distribution: {slavestats}")
+            # create a thread for the bucket, if needed
             if self.slavesthreads[bucket] is None:
                 self.slavesthreads[bucket] = SlaveThread(self.cluster, self.outputq)    # start them on demand
+
+            # submit the job to a thread
             self.slavesthreads[bucket].submit(job)
             self.inputq.task_done()
 
@@ -210,17 +225,21 @@ class Async():
             self.num_slaves = max_procs   # limit the number of slave processes we start
 
         #log.info(f"starting processes {time.asctime()}")
+
+        # create the slave processes
         for i in range(0, self.num_slaves):
             self.slaves.append(SlaveProcess(self.cluster, self.max_threads_per_proc, self.outputq))
         #log.info(f"starting processes complete {time.asctime()}")
 
+    # kill the slave processes
     def __del__(self):
-        die_mf = Job(None, None, None, None, None)
+        #die_mf = Job(None, None, None, None, None)
         for slave in self.slaves:
             slave.submit(die_mf)
-            slave.proc.join()    # wait for it to die
+            slave.proc.join(60)    # wait for it to die
         del self.outputq
 
+    # submit a job
     def submit(self, hostname, category, stat, method, parms):
         job = Job(hostname, category, stat, method, parms)      # wekahost?  Object? decisions, decisions
         try:
@@ -245,6 +264,7 @@ class Async():
     def log_stats(self):
         log.info(f"process bucket distribution: {dict(sorted(self.stats.items()))}")
 
+    # wait for all the API calls to return
     def wait(self):
         """
         input q needs to be empty
@@ -254,6 +274,7 @@ class Async():
 
         #self.log_stats()
 
+        # what if a slave dies or hangs?  What will join() do?
         for slave in self.slaves:
             #log.error(f"joining slave queue {self.slaves.index(slave)}")
             slave.inputq.join()    # wait for the inputq to drain
@@ -261,7 +282,11 @@ class Async():
 
 
         while self.num_outstanding > 0:
-            result = self.outputq.get() # need try/except here to prevent process from locking up
+            try:
+                result = self.outputq.get(True, 60.0) # need try/except here to prevent process from locking up?
+            except queue.Empty as exc:
+                log.error(f"outputq timeout!")
+                return
             self.num_outstanding -= 1
             if not result.exception:
                 if len(result.result) != 0:

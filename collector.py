@@ -420,6 +420,7 @@ class WekaCollector(object):
                     import copy
                     newcmd = copy.deepcopy(command)  # make sure to copy it
                     newcmd["parms"]["node_ids"] = copy.deepcopy(nids)  # make sure to copy it
+                    newcmd["parms"]["show_internal"] = True
 
                     #hostobj = cluster.get_hostobj_byname(hostname)
                     #log.debug(f"scheduling {hostname} {newcmd['parms']}")  # debugging
