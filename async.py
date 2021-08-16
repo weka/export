@@ -10,6 +10,8 @@ import wekalib
 import time
 import queue
 import math
+import traceback
+import json
 
 # initialize logger - configured in main routine
 log = getLogger(__name__)
@@ -25,6 +27,9 @@ class Job(object):
         self.result = dict()
         self.exception = False
         self.times_in_q = 1
+
+    def __str__(self):
+        return f"{self.hostname},{self.category},{self.stat},{json.dumps(self.result,indent=2)}"
 
 
 die_mf = Job(None, None, None, None, None)
@@ -60,19 +65,20 @@ class SlaveThread(object):
             except wekalib.exceptions.HTTPError as exc:
                 if exc.code == 502:  # Bad Gateway - a transient error
                     log.error(f"slave thread received Bad Gateway on host {job.hostname}")
-                    if job.times_in_q <= 10:
+                    if job.times_in_q <= 2: # lowered from 10 retries
                         # retry a few times
                         job.times_in_q += 1
                         self.submit(job)
                         self.inputq.task_done()
                         continue    # go back to the inputq.get()
-                    elif job.times_in_q <= 12:  # give it 2 more chances
-                        # then sleep to give the cluster a little time to recover
-                        time.sleep(0.5) # might be the only thing in the queue...
-                        job.times_in_q += 1
-                        self.submit(job)
-                        self.inputq.task_done()
-                        continue    # go back to the inputq.get()
+                    # trex - take this out for now... extending scrape times too much
+                    #elif job.times_in_q <= 12:  # give it 2 more chances
+                    #    # then sleep to give the cluster a little time to recover
+                    #    time.sleep(0.5) # might be the only thing in the queue...
+                    #    job.times_in_q += 1
+                    #    self.submit(job)
+                    #    self.inputq.task_done()
+                    #    continue    # go back to the inputq.get()
 
                 # else, give up and return the error - note: multiprocessing.queue module hates HTTPErrors - can't unpickle correctly
                 job.result = wekalib.exceptions.APIError(f"{exc.host}: ({exc.code}) {exc.message}") # send as APIError
@@ -81,9 +87,11 @@ class SlaveThread(object):
                 job.result = exc
                 job.exception = True
                 log.info(f"Exception recieved on host {job.hostname}:{exc}")
+                log.info(traceback.format_exc())
 
 
             # this will send back the above exeptions as well as good results
+            #log.info(f"job.result={json.dumps(job.result, indent=2)}")
             self.outputq.put(job)
             self.inputq.task_done()
 
@@ -242,6 +250,7 @@ class Async():
     # submit a job
     def submit(self, hostname, category, stat, method, parms):
         job = Job(hostname, category, stat, method, parms)      # wekahost?  Object? decisions, decisions
+        log.debug(f"submitting job {job}")
         try:
             this_hash = self.bucket_array.index(hostname)
         except ValueError: 

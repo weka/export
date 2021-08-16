@@ -120,24 +120,40 @@ class WekaCollector(object):
 
         global weka_stat_list
 
-        weka_stat_list = config['stats']
+        #print(json.dumps(config['stats'],indent=4))
+        #weka_stat_list = config['stats']
+        weka_stat_list = dict()
+        for category, stats in config['stats'].items():
+            log.debug(f"category={category}, stats={stats}")
+            if stats is not None:
+                if category not in weka_stat_list:
+                    log.debug(f"weka_stat_list={weka_stat_list}, stats={stats}")
+                    weka_stat_list[category] = dict()
+                for stat, unit in stats.items():
+                    #log.debug(f"stat={stat}, unit={unit}")
+                    weka_stat_list[category].update({stat:unit})
 
         #log.debug(f"weka_stat_list={weka_stat_list}")
 
         # set up commands to get stats defined in config file
         # category: {{ stat:unit}, {stat:unit}}
         for category, stat_dict in weka_stat_list.items():
-            #log.debug(f"category={category}, stat_dict={stat_dict}")
+            log.debug(f"category={category}, stat_dict={stat_dict}")
             if stat_dict is not None:
-                for stat, unit in stat_dict.items():
-                    # have to create the category keys, so do it with a try: block
-                    if category not in self.wekaIOCommands.keys():
-                        #log.debug(f"Initializing category {category}")
-                        self.wekaIOCommands[category] = {}
+                #for stat, unit in stat_dict.items():
+                #print(json.dumps(stat_dict))
+                #for stat in stat_dict:
+                # have to create the category keys, so do it with a try: block
+                #if category not in self.wekaIOCommands.keys():
+                #    #log.debug(f"Initializing category {category}")
+                #    self.wekaIOCommands[category] = dict()
 
-                    parms = dict(category=category, stat=stat, interval='1m', per_node=True, no_zeroes=True)
-                    self.wekaIOCommands[category][stat] = dict(method="stats_show", parms=parms)
+                #parms = dict(category=category, stat=stat, interval='1m', per_node=True, no_zeroes=True, show_internal=True)
+                parms = dict(category=[category] *len(stat_dict), stat=list(stat_dict.keys()), interval='1m', per_node=True, no_zeroes=True, show_internal=True)
+                log.debug(parms)
+                self.wekaIOCommands[category] = dict(method="stats_show", parms=parms)
 
+        #print(json.dumps(self.wekaIOCommands,indent=4))
         # set up buckets, [4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304, 8388608, 16777216, 33554432, 67108864, 134217728, inf]
         for i in range(12, 12 + 16):
             buckets.append(2 ** i)
@@ -145,6 +161,7 @@ class WekaCollector(object):
         buckets.append(float("inf"))
 
         log.debug("wekaCollector created")
+        #sys.exit(1)
 
     def get_commandlist(self):
         return self.wekaIOCommands
@@ -328,17 +345,6 @@ class WekaCollector(object):
             wekadata[stat] = cluster.call_api(command['method'], command['parms'])
             self.api_stats['num_calls'] += 1
 
-        #log.debug("******************************** WAITING ON ASYNC PROCESS *************************************")
-        #results = cluster.wait_async()    # wait for api calls to complete (returns APICall objects)
-        #log.debug("******************************** ASYNC PROCESS COMPLETE ***************************************")
-
-        #if len(results) == 0:
-        #    log.critical(f"api unable to contact cluster {cluster}; aborting gather")
-        #    return
-
-        # move results into the wekadata structure
-        #self.store_results(cluster, results)
-
 
         # build maps - need this for decoding data, not collecting it.
         #    do in a try/except block because it can fail if the cluster changes while we're collecting data
@@ -397,6 +403,8 @@ class WekaCollector(object):
 
         # schedule a bunch of data gather queries
         for category, stat_dict in self.get_commandlist().items():
+            # stat_dict={'method': 'stats_show', 'parms': {'category': ['cpu'], 'stat': ['CPU_UTILIZATION'], 'interval': '1m', 'per_node': True, 'no_zeroes': True, 'show_internal': True}}
+            log.debug(f"category={category}, stat_dict={stat_dict}")
 
             category_nodes = {}     # dict now... host:[nid]
             # log.error(f"{cluster.name} category is: {category} {category_nodetypes[category]}")
@@ -411,47 +419,50 @@ class WekaCollector(object):
             #log.debug(f"{cluster.name} cat nodes: {category} {json.dumps(category_nodes, indent=4)}")  # debugging
 
             # not sure what to do here... think...
-            #query_nodes = list(
-            #    set(category_nodes.copy()))  # make the list unique so we don't ask for the same data muliple times
+            up_list = list()
+            for host in wekadata['hostList']:
+                if host['status'] == 'UP' and host['state'] == 'ACTIVE':
+                    up_list.append(host['hostname'])
 
             log.debug(f"category={category}, stat_dict={stat_dict}")
-            for stat, command in stat_dict.items():
-                for hostname, nids in category_nodes.items():    # hostinfo_dict is host:[nid]
-                    import copy
-                    newcmd = copy.deepcopy(command)  # make sure to copy it
-                    newcmd["parms"]["node_ids"] = copy.deepcopy(nids)  # make sure to copy it
-                    newcmd["parms"]["show_internal"] = True
+            command = stat_dict
 
-                    #hostobj = cluster.get_hostobj_byname(hostname)
-                    #log.debug(f"scheduling {hostname} {newcmd['parms']}")  # debugging
+            for hostname, nids in category_nodes.items():    # hostinfo_dict is host:[nid]
+                import copy
+                newcmd = copy.deepcopy(command)  # make sure to copy it
+                newcmd["parms"]["node_ids"] = copy.deepcopy(nids)  # make sure to copy it
+                #newcmd["parms"]["show_internal"] = True
 
-                    # schedule more asychronous api calls...
-                    try:
-                        #hostobj.async_call_api((stat, category), newcmd['method'], newcmd['parms'])   # host.async_call_api instead?
-                        self.async.submit(hostname, category, stat, newcmd['method'], newcmd['parms'])
-                        self.api_stats['num_calls'] += 1
-                    except:
-                        log.error("gather(): error scheduling thread wekastat for cluster {}".format(str(cluster)))
-                        print(traceback.format_exc())
-                        sys.exit(1)
+                #log.debug(f"scheduling {hostname} {newcmd['parms']}")  # debugging
+                if cluster.get_hostobj_byname(hostname) is None:
+                    # skip it if it's down?
+                    continue
+
+                #print( json.dumps(wekadata,indent=2))
+                if hostname not in up_list:
+                    # skip down hosts
+                    continue
+
+                category_list = stat_dict['parms']['category']
+                stat = stat_dict['parms']['stat']
+                # schedule more asychronous api calls...
+                try:
+                    #self.async.submit(hostname, category, stat, newcmd['method'], newcmd['parms'])
+                    #print(f"hostname={hostname}, category_list={category_list}, method={newcmd['method']}, parms={newcmd['parms']}")
+                    self.async.submit(hostname, category_list, stat, newcmd['method'], newcmd['parms'])
+                    self.api_stats['num_calls'] += 1
+                except:
+                    log.error("gather(): error scheduling thread wekastat for cluster {}".format(str(cluster)))
+                    print(traceback.format_exc())
+                    sys.exit(1)
 
 
         log.debug("******************************** WAITING ON ASYNC PROCESS *************************************")
-        #results = cluster.wait_async()    # wait for api calls to complete (returns APICall objects)
-        #for hostname in cluster.hosts():
-        #    hostobj = cluster.get_hostobj_byname(hostname)
-        #    results = hostobj.wait_async()    # wait for api calls to complete (returns APICall objects)
-        #    # move results into the wekadata structure
-        #    self.store_results(cluster, results)
-
+        stats_data = list()
         for result in self.async.wait():
             if not result.exception:
-                if result.category not in wekadata:
-                    wekadata[result.category] = dict()
-                if result.stat not in wekadata[result.category]:
-                    wekadata[result.category][result.stat] = list()
-                #log.debug(f"result = {result.result}")
-                wekadata[result.category][result.stat] += result.result
+                #log.info(f"result={result}")
+                stats_data += result.result
         log.debug("******************************** WAITING ON ASYNC PROCESS COMPLETE *************************************")
 
         elapsed = time.time() - start_time
@@ -649,66 +660,74 @@ class WekaCollector(object):
         #            ['cluster','host_name','host_role','node_id','node_role','category','stat','unit']
         #
         # yes, I know it's convoluted... it was hard to write, so it *should* be hard to read. ;)
-        # print(wekadata)
+        #print(json.dumps(wekadata, indent=2))
         log.debug(f"io stats cluster={cluster.name}")
-        for category, stat_dict in self.get_weka_stat_list().items():
-            log.debug(f"category={category}")
-            if category in wekadata:
-                log.debug(f"category {category} is in wekadata") 
-                for stat, nodelist in wekadata[category].items():
-                    unit = stat_dict[stat]
-                    for node in nodelist:
-                        try:
-                            hostname = weka_maps["node-host"][node["node"]]  # save this because the syntax is gnarly
-                            role_list = weka_maps["node-role"][node["node"]]
-                        except Exception as exc:
-                            # track = traceback.format_exc()
-                            # print(track)
-                            log.error(f"{exc} error in maps for cluster {str(cluster)}")
-                            return  # or return? was continue
+        log.debug(json.dumps(stats_data, indent=2))
 
-                        for role in role_list:
+        """
+        [{
+          "category": "ops",
+          "node": "NodeId<1>",
+          "stat_type": "READ_BYTES",
+          "stat_value": 4189934.933333333,
+          "timestamp": "2021-08-16T15:23:00Z"
+        },
+          {
+          "category": "ops",
+          "node": "NodeId<1>",
+          "stat_type": "THROUGHPUT",
+          "stat_value": 4189934.933333333,
+          "timestamp": "2021-08-16T15:23:00Z"
+        }]
+        """
 
-                            labelvalues = [
-                                str(cluster),
-                                hostname,
-                                weka_maps["host-role"][hostname],
-                                node["node"],
-                                role,
-                                category,
-                                stat,
-                                unit]
+        for statistic in stats_data:
+            node = statistic['node']
+            try:
+                hostname = weka_maps["node-host"][node]
+                host_role = weka_maps["host-role"][hostname]
+                role_list = weka_maps["node-role"][node]
+                if len(role_list) > 1:
+                    role = "multiple"   # punt for now? Vince  - Might want to list CPU_UTIL multiple times, once per role??
+                else:
+                    role = role_list[0]
+                category = statistic['category']
+                stat = statistic['stat_type']
+                #weka_stat_list[category].update({stat:unit})
+                unit = weka_stat_list[category][stat]
+                value = statistic['stat_value']
+                timestamp = statistic['timestamp']
+            except Exception as exc:
+                # track = traceback.format_exc()
+                # print(track)
+                log.error(f"{exc} error in maps for cluster {str(cluster)}")
 
-                            if unit != "sizes":
-                                try:
-                                    if category == 'ops_nfs':
-                                        log.debug("ops_nfs is: {} {}".format(stat, node["stat_value"]))
-                                    metric_objs['weka_stats_gauge'].add_metric(labelvalues, node["stat_value"],
-                                                                               timestamp=wekatime_to_datetime(
-                                                                                   node['timestamp']).timestamp())
-                                except:
-                                    print(f"{traceback.format_exc()}")
-                                    log.error("error processing io stats for cluster {}".format(str(cluster)))
-                            else:
+            labelvalues = [
+                str(cluster),
+                hostname,
+                host_role,
+                node,
+                role,
+                category,
+                stat,
+                unit]
 
-                                try:
-                                    if category == 'ops_nfs':
-                                        log.debug("ops_nfs is: {} {}".format(stat, node["stat_value"]))
-                                    release_list = cluster.release.split('.')  # 3.8.1 becomes ['3','8','1']
-                                    if int(release_list[0]) >= 3 and int(release_list[1]) >= 8:
-                                        value_dict, gsum = parse_sizes_values_post38(
-                                            node["stat_value"])  # Turn the stat_value into a dict
-                                    else:
-                                        value_dict, gsum = parse_sizes_values_pre38(
-                                            node["stat_value"])  # Turn the stat_value into a dict
-                                    metric_objs['weka_io_histogram'].add_metric(labels=labelvalues, buckets=value_dict,
-                                                                                gsum_value=gsum)
-                                except:
-                                    track = traceback.format_exc()
-                                    print(track)
-                                    log.error("error processing io sizes for cluster {}".format(str(cluster)))
+            log.debug(f"unit={unit}")
+            if unit != 'sizes':
+                try:
+                    metric_objs['weka_stats_gauge'].add_metric(labelvalues, value,
+                                       timestamp=wekatime_to_datetime(timestamp).timestamp())
+                except:
+                    print(f"{traceback.format_exc()}")
+                    log.error("error processing io stats for cluster {}".format(str(cluster)))
             else:
-                log.debug(f"category {category} is NOT in wekadata") 
+                try:
+                    value_dict, gsum = parse_sizes_values_post38(value) # Turn the stat_value into a dict
+                    log.debug(f"{value_dict}, {gsum}")
+                    metric_objs['weka_io_histogram'].add_metric(labels=labelvalues, buckets=value_dict, gsum_value=gsum)
+                except:
+                    log.error(f"Error processing SIZES stat {value}")
+                    log.error(f"{traceback.format_exc()}")
 
         # shut down the child processes
         log.debug(f"shutting down children")
