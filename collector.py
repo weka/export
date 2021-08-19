@@ -502,9 +502,9 @@ class WekaCollector(object):
             # Uptime
             # not sure why, but sometimes this would fail... trim off the microseconds, because we really don't care 
             cluster_time = self._trim_time(wekadata["clusterinfo"]["time"]["cluster_time"])
-            start_time = self._trim_time(wekadata["clusterinfo"]["io_status_changed_time"])
+            cluster_start_time = self._trim_time(wekadata["clusterinfo"]["io_status_changed_time"])
             now_obj = datetime.datetime.strptime(cluster_time, "%Y-%m-%dT%H:%M:%S")
-            dt_obj = datetime.datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S")
+            dt_obj = datetime.datetime.strptime(cluster_start_time, "%Y-%m-%dT%H:%M:%S")
             uptime = now_obj - dt_obj
             metric_objs["wekauptime"].add_metric([str(cluster)], uptime.total_seconds())
         except:
