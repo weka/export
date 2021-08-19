@@ -112,7 +112,7 @@ class SlaveProcess(object):
         self.cluster = cluster
         self.outputq = outputq
         self.queuesize = 0
-        self.inputq = multiprocessing.JoinableQueue(50000) # 50,000 max entries?
+        self.inputq = multiprocessing.JoinableQueue(500) # 50,000 max entries?
 
         self.slavesthreads = list()
         self.num_threads = num_threads
@@ -208,7 +208,7 @@ class SlaveProcess(object):
             self.slavesthreads[bucket].submit(job)
             self.inputq.task_done()
 
-    def join():
+    def join(self):
         self.inputq.join()  # wait for the queue to be completed
 
 

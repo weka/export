@@ -717,7 +717,7 @@ class WekaCollector(object):
         log.debug(f"shutting down children")
         del self.asyncobj
 
-        log.info(f"Gather complete: cluster={cluster}, total elapsed={time.time() - start_time}")
+        log.info(f"Gather complete: cluster={cluster}, total elapsed={str(round(time.time() - start_time, 2))}")
 
     # ------------- end of gather() -------------
 
