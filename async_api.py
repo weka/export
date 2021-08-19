@@ -295,7 +295,7 @@ class Async():
         # all the slaves should be dead, we join()ed them above
         while self.num_outstanding > 0:
             try:
-                result = self.outputq.get(True, 0.1)
+                result = self.outputq.get(True, 10.0)
             except queue.Empty as exc:
                 log.error(f"outputq timeout!")  # should never happen because they're dead
                 # queue is empty, just return
