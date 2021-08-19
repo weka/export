@@ -151,9 +151,10 @@ class SlaveProcess(object):
             #log.debug(f"got job from queue, {job.hostname}, {job.category}, {job.stat}")
 
             if job.hostname is None:
-                #die_mf = Job(None, None, None, None, None)
+                # we were told to die... shut it down
                 for slave in self.slavethreads:
                     if not slave.thread.is_alive():
+                        # for tracking errors
                         log.error(f"a thread is already dead?")
                         continue
                     # we want to make sure they're done before we kill them
@@ -161,7 +162,7 @@ class SlaveProcess(object):
                     # do we need to wait for the queue to drain?  Is that even a good idea?
 
                     # have to leave a lot of time in case it has a full inputq
-                    slave.thread.join(timeout=60.0)    # wait for it to die
+                    slave.thread.join(timeout=5.0)    # wait for it to die
                     if slave.thread.is_alive():
                         log.error(f"a thread didn't die!")
                 del self.inputq
@@ -241,10 +242,9 @@ class Async():
 
     # kill the slave processes
     def __del__(self):
-        #die_mf = Job(None, None, None, None, None)
         for slave in self.slaves:
             slave.submit(die_mf)
-            slave.proc.join(60)    # wait for it to die
+            slave.proc.join(5.0)    # wait for it to die
         del self.outputq
 
     # submit a job
@@ -284,17 +284,21 @@ class Async():
         #self.log_stats()
 
         # what if a slave dies or hangs?  What will join() do?
+        # inputq is a multiprocessing.JoinableQueue
         for slave in self.slaves:
             #log.error(f"joining slave queue {self.slaves.index(slave)}")
+            # check if slave is alive/dead before joining?
+            #if slave.proc.is_alive():
             slave.inputq.join()    # wait for the inputq to drain
             #slave.log_stats()
 
-
+        # all the slaves should be dead, we join()ed them above
         while self.num_outstanding > 0:
             try:
-                result = self.outputq.get(True, 60.0) # need try/except here to prevent process from locking up?
+                result = self.outputq.get(True, 0.1)
             except queue.Empty as exc:
-                log.error(f"outputq timeout!")
+                log.error(f"outputq timeout!")  # should never happen because they're dead
+                # queue is empty, just return
                 return
             self.num_outstanding -= 1
             if not result.exception:
@@ -302,7 +306,9 @@ class Async():
                     yield result        # yield so it is an iterator
             else:
                 log.debug(f"API sent error: {result.result}")
-                # do we requeue?
+
+        # queue should be empty now
+        return
 
 
 if __name__ == "__main__":

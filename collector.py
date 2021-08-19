@@ -707,7 +707,7 @@ class WekaCollector(object):
             else:
                 try:
                     value_dict, gsum = parse_sizes_values_post38(value) # Turn the stat_value into a dict
-                    log.debug(f"{value_dict}, {gsum}")
+                    #log.debug(f"{value_dict}, {gsum}")
                     metric_objs['weka_io_histogram'].add_metric(labels=labelvalues, buckets=value_dict, gsum_value=gsum)
                 except:
                     log.error(f"Error processing SIZES stat {value}")
