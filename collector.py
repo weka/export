@@ -5,24 +5,20 @@
 # author: Vince Fleming, vince@weka.io
 
 
-from prometheus_client import Gauge, Histogram
-from prometheus_client.core import GaugeMetricFamily, InfoMetricFamily, GaugeHistogramMetricFamily
-import time
 import datetime
-from threading import Lock
-import traceback
-import logging
-import logging.handlers
-from logging import debug, info, warning, error, critical, getLogger, DEBUG
 import json
 import sys
-from async import Async
+import time
+import traceback
+from logging import getLogger
+from threading import Lock
 
-# local imports
-from wekalib.wekaapi import WekaApi
-from wekalib.wekatime import wekatime_to_datetime
 import wekalib
+from prometheus_client.core import GaugeMetricFamily, InfoMetricFamily, GaugeHistogramMetricFamily
+# local imports
+from wekalib.wekatime import wekatime_to_datetime
 
+from async_api import Async
 
 #
 # Module Globals
@@ -100,7 +96,6 @@ class WekaCollector(object):
         'weka_num_drives_active': ['Number of active weka drives', ["cluster"]],
         'weka_num_drives_total': ['Total number of weka drives', ["cluster"]]
     }
-    wekaIOCommands = {}
     weka_stat_list = {}  # category: {{ stat:unit}, {stat:unit}}
 
     def __init__(self, config, cluster_obj):  # wekaCollector
@@ -145,6 +140,7 @@ class WekaCollector(object):
 
         # set up commands to get stats defined in config file
         # category: {{ stat:unit}, {stat:unit}}
+        """
         for category, stat_dict in weka_stat_list.items():
             log.debug(f"category={category}, stat_dict={stat_dict}")
             if stat_dict is not None:
@@ -159,6 +155,8 @@ class WekaCollector(object):
                 parms = dict(category=[category] *len(stat_dict), stat=list(stat_dict.keys()), interval='1m', per_node=True, no_zeroes=True, show_internal=True)
                 log.debug(parms)
                 self.wekaIOCommands[category] = dict(method="stats_show", parms=parms)
+        """
+
 
         for i in range(0,len(one_call_cat)):
             log.debug(f"{one_call_cat[i]}, {one_call_stat[i]}")
@@ -166,7 +164,6 @@ class WekaCollector(object):
         self.apicalls = dict(method="stats_show", parms=parms)
 
 
-        #print(json.dumps(self.wekaIOCommands,indent=4))
         # set up buckets, [4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304, 8388608, 16777216, 33554432, 67108864, 134217728, inf]
         for i in range(12, 12 + 16):
             buckets.append(2 ** i)
@@ -174,10 +171,6 @@ class WekaCollector(object):
         buckets.append(float("inf"))
 
         log.debug("wekaCollector created")
-        #sys.exit(1)
-
-    def get_commandlist(self):
-        return self.wekaIOCommands
 
     def get_weka_stat_list(self):
         return weka_stat_list
@@ -351,7 +344,7 @@ class WekaCollector(object):
             return
 
         # set up async api calling subsystem
-        self.async = Async(cluster, self.max_procs, self.max_threads_per_proc)
+        self.asyncobj = Async(cluster, self.max_procs, self.max_threads_per_proc)
 
         # get info from weka cluster - these are quick calls
         for stat, command in self.WEKAINFO.items():
@@ -390,7 +383,6 @@ class WekaCollector(object):
         #
         #
 
-        #node_maps = {"FRONTEND": [], "COMPUTE": [], "DRIVES": [], "MANAGEMENT": []}  # initial state of maps
         node_maps = {"FRONTEND": {}, "COMPUTE": {}, "DRIVES": {}, "MANAGEMENT": {}}  # initial state of maps
 
         # log.debug(f'{weka_maps["node-role"]}')
@@ -441,76 +433,14 @@ class WekaCollector(object):
             newcmd = copy.deepcopy(self.apicalls)  # make sure to copy it
             newcmd["parms"]["node_ids"] = copy.deepcopy(one_call_nids[hostname])
             # set up newcmd
-            self.async.submit(hostname, newcmd['parms']['category'], newcmd['parms']['stat'], newcmd['method'], newcmd['parms'])
+            self.asyncobj.submit(hostname, newcmd['parms']['category'], newcmd['parms']['stat'], newcmd['method'], newcmd['parms'])
             self.api_stats['num_calls'] += 1
 
         # end new impl
 
-        """
-        # schedule a bunch of data gather queries
-        for category, stat_dict in self.get_commandlist().items():
-            # stat_dict={'method': 'stats_show', 'parms': {'category': ['cpu'], 'stat': ['CPU_UTILIZATION'], 'interval': '1m', 'per_node': True, 'no_zeroes': True, 'show_internal': True}}
-            log.debug(f"category={category}, stat_dict={stat_dict}")
-
-            category_nodes = {}     # dict now... host:[nid]
-            # log.error(f"{cluster.name} category is: {category} {category_nodetypes[category]}")
-            for nodetype in category_nodetypes[category]:  # nodetype is FRONTEND, COMPUTE, DRIVES, MANAGEMENT
-                log.debug(f"nodetype={nodetype}, node_maps[nodetype] = {node_maps[nodetype]}")
-                for host, nodes in node_maps[nodetype].items():
-                    if host in category_nodes.keys():
-                        category_nodes[host] = list(set().union(category_nodes[host],nodes))   # merge nodes lists uniquely
-                    else:
-                        category_nodes[host] = nodes
-                    if host not in one_call_nids:
-                        one_call_nids[host] = nodes
-                    else:
-                        one_call_nids[host] += nodes
-
-            #log.debug(f"{cluster.name} cat nodes: {category} {json.dumps(category_nodes, indent=4)}")  # debugging
-
-            # not sure what to do here... think...
-            up_list = list()
-            for host in wekadata['hostList']:
-                if host['status'] == 'UP' and host['state'] == 'ACTIVE':
-                    up_list.append(host['hostname'])
-
-            log.debug(f"category={category}, stat_dict={stat_dict}")
-            command = stat_dict
-
-            for hostname, nids in category_nodes.items():    # hostinfo_dict is host:[nid]
-                import copy
-                newcmd = copy.deepcopy(command)  # make sure to copy it
-                newcmd["parms"]["node_ids"] = copy.deepcopy(nids)  # make sure to copy it
-                #newcmd["parms"]["show_internal"] = True
-
-                #log.debug(f"scheduling {hostname} {newcmd['parms']}")  # debugging
-                if cluster.get_hostobj_byname(hostname) is None:
-                    # skip it if it's down?
-                    continue
-
-                #print( json.dumps(wekadata,indent=2))
-                if hostname not in up_list:
-                    # skip down hosts
-                    continue
-
-                category_list = stat_dict['parms']['category']
-                stat = stat_dict['parms']['stat']
-                # schedule more asychronous api calls...
-                try:
-                    #self.async.submit(hostname, category, stat, newcmd['method'], newcmd['parms'])
-                    #print(f"hostname={hostname}, category_list={category_list}, method={newcmd['method']}, parms={newcmd['parms']}")
-                    self.async.submit(hostname, category_list, stat, newcmd['method'], newcmd['parms'])
-                    self.api_stats['num_calls'] += 1
-                except:
-                    log.error("gather(): error scheduling thread wekastat for cluster {}".format(str(cluster)))
-                    print(traceback.format_exc())
-                    sys.exit(1)
-        """
-
-
         log.debug("******************************** WAITING ON ASYNC PROCESS *************************************")
         stats_data = list()
-        for result in self.async.wait():
+        for result in self.asyncobj.wait():
             if not result.exception:
                 #log.info(f"result={result}")
                 stats_data += result.result
@@ -785,10 +715,9 @@ class WekaCollector(object):
 
         # shut down the child processes
         log.debug(f"shutting down children")
-        del self.async
+        del self.asyncobj
 
-
-        log.info(f"Complete cluster={cluster}")
+        log.info(f"Gather complete: cluster={cluster}, total elapsed={time.time() - start_time}")
 
     # ------------- end of gather() -------------
 
