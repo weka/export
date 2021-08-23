@@ -39,7 +39,6 @@ class SlaveThread(object):
     def __init__(self, cluster, outputq):
         self.cluster = cluster
         self.outputq = outputq
-        #self.inputq = multiprocessing.JoinableQueue(200) #  this used a LOT of semaphores; ran out of them
         self.inputq = queue.Queue();
 
         self.thread = threading.Thread(target=self.slave_thread, daemon=True)
@@ -95,15 +94,10 @@ class SlaveThread(object):
             self.outputq.put(job)
             self.inputq.task_done()
 
+    # slave thread submit
     def submit(self, job):
         """ submit an job to this slave for processing """
         self.inputq.put(job)
-
-
-    #def join():
-    #    self.inputq.join()  # wait for the queue to be completed
-
-
 
 
 # Start a process that will have lots of threads
@@ -122,6 +116,7 @@ class SlaveProcess(object):
         self.proc.start()
 
 
+    # process submit
     def submit(self, job):
         """ submit an job to this slave for processing """
         self.inputq.put(job)
@@ -158,7 +153,7 @@ class SlaveProcess(object):
                         log.error(f"a thread is already dead?")
                         continue
                     # we want to make sure they're done before we kill them
-                    slave.submit(die_mf)
+                    slave.submit(die_mf)    # slave THREAD
                     # do we need to wait for the queue to drain?  Is that even a good idea?
 
                     # have to leave a lot of time in case it has a full inputq
@@ -209,6 +204,7 @@ class SlaveProcess(object):
             self.slavesthreads[bucket].submit(job)
             self.inputq.task_done()
 
+    # process join
     def join(self):
         self.inputq.join()  # wait for the queue to be completed
 
