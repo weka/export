@@ -82,6 +82,10 @@ class SlaveThread(object):
                 # else, give up and return the error - note: multiprocessing.queue module hates HTTPErrors - can't unpickle correctly
                 job.result = wekalib.exceptions.APIError(f"{exc.host}: ({exc.code}) {exc.message}") # send as APIError
                 job.exception = True
+            except wekalib.exceptions.TimeoutError as exc:
+                job.result = exc
+                job.exception = True
+                log.error(f"{exc}")
             except Exception as exc:
                 job.result = exc
                 job.exception = True
@@ -168,7 +172,7 @@ class SlaveProcess(object):
             hostobj = cluster.get_hostobj_byname(job.hostname)
 
             if hostobj is None:
-                log.error(f"error on hostname {job.hostname}, {job.parms}")
+                log.debug(f"error on hostname {job.hostname}")
                 job.result = wekalib.exceptions.APIError(f"{job.hostname}: (NOHOST) Host object not found") # send as APIError
                 job.exception = True
                 self.outputq.put(job)       # say it didn't work
@@ -279,14 +283,10 @@ class Async():
 
         #self.log_stats()
 
-        # what if a slave dies or hangs?  What will join() do?
         # inputq is a multiprocessing.JoinableQueue
+        # wait for inputq's to drain
         for slave in self.slaves:
-            #log.error(f"joining slave queue {self.slaves.index(slave)}")
-            # check if slave is alive/dead before joining?
-            #if slave.proc.is_alive():
             slave.inputq.join()    # wait for the inputq to drain
-            #slave.log_stats()
 
         # all the slaves should be dead, we join()ed them above
         while self.num_outstanding > 0:
