@@ -17,6 +17,7 @@ import wekalib
 from prometheus_client.core import GaugeMetricFamily, InfoMetricFamily, GaugeHistogramMetricFamily
 # local imports
 from wekalib.wekatime import wekatime_to_datetime
+from wekalib.circular import circular_list
 
 from async_api import Async
 
@@ -110,6 +111,7 @@ class WekaCollector(object):
         self.api_stats = {}
         self.max_procs = config['exporter']['max_procs']
         self.max_threads_per_proc = config['exporter']['max_threads_per_proc']
+        self.backends_only = config['exporter']['backends_only']
 
         self.cluster = cluster_obj
 
@@ -428,12 +430,19 @@ class WekaCollector(object):
         for i in range(0,len(self.apicalls['parms']['category'])):
             log.debug(f"{self.apicalls['parms']['category'][i]}, {self.apicalls['parms']['stat'][i]}")
 
+        if self.backends_only:
+            circular_host_list = circular_list(inputlist=list(cluster.host_dict.keys()))
+
         for hostname in up_list:
             import copy
             newcmd = copy.deepcopy(self.apicalls)  # make sure to copy it
             newcmd["parms"]["node_ids"] = copy.deepcopy(one_call_nids[hostname])
             # set up newcmd
-            self.asyncobj.submit(hostname, newcmd['parms']['category'], newcmd['parms']['stat'], newcmd['method'], newcmd['parms'])
+            if not self.backends_only:
+                self.asyncobj.submit(hostname, newcmd['parms']['category'], newcmd['parms']['stat'], newcmd['method'], newcmd['parms'])
+            else:
+                self.asyncobj.submit(circular_host_list.next(), newcmd['parms']['category'], newcmd['parms']['stat'], newcmd['method'], newcmd['parms'])
+                pass
             self.api_stats['num_calls'] += 1
 
         # end new impl

@@ -12,6 +12,7 @@ import queue
 import math
 import traceback
 import json
+import sys
 
 # initialize logger - configured in main routine
 log = getLogger(__name__)
@@ -44,6 +45,9 @@ class SlaveThread(object):
         self.thread = threading.Thread(target=self.slave_thread, daemon=True)
         self.thread.start()
 
+    def __str__(self):
+        return self.thread.name
+
     def slave_thread(self):
         while True:
             try:
@@ -52,10 +56,14 @@ class SlaveThread(object):
                 del self.inputq
                 return  # just silently die - this happens when the parent exits
 
+            log.debug(f"slave thread {self} received job hostname={job.hostname}")
             if job.hostname is None:
                 # time to die
+                log.debug(f"slave thread {self} told to die")
                 del self.inputq
                 return
+            #else:
+            #    log.debug(f"slave thread {self} received job")
 
             hostobj = self.cluster.get_hostobj_byname(job.hostname)
             try:
@@ -95,6 +103,7 @@ class SlaveThread(object):
 
             # this will send back the above exeptions as well as good results
             #log.info(f"job.result={json.dumps(job.result, indent=2)}")
+            log.debug(f"slave thread {self} queuing output")
             self.outputq.put(job)
             self.inputq.task_done()
 
@@ -112,7 +121,7 @@ class SlaveProcess(object):
         self.queuesize = 0
         self.inputq = multiprocessing.JoinableQueue(500) # 50,000 max entries?
 
-        self.slavesthreads = list()
+        self.slavethreads = list()
         self.num_threads = num_threads
 
         # actually start the process
@@ -126,6 +135,9 @@ class SlaveProcess(object):
         self.inputq.put(job)
         self.queuesize += 1
 
+    def __str__(self):
+        return self.proc.name
+
 
     # this is the main loop of the process created above
     def slave_process(self, cluster):
@@ -137,8 +149,8 @@ class SlaveProcess(object):
         #log.info(f"starting threads {time.asctime()}")
         log.info(f"starting {self.num_threads} threads")
         for i in range(0, self.num_threads):
-            self.slavesthreads.append(None) # reserve spots so we can start them on demand below
-            #self.slavesthreads.append(SlaveThread(self.cluster, self.outputq))
+            self.slavethreads.append(None) # reserve spots so we can start them on demand below
+            #self.slavethreads.append(SlaveThread(self.cluster, self.outputq))
         #log.info(f"starting threads complete {time.asctime()}")
 
         slavestats = dict()
@@ -149,24 +161,33 @@ class SlaveProcess(object):
             job = self.inputq.get()
             #log.debug(f"got job from queue, {job.hostname}, {job.category}, {job.stat}")
 
+            log.debug(f"slave process {self} received job hostname={job.hostname}")
             if job.hostname is None:
                 # we were told to die... shut it down
+                log.debug(f"slave process {self} told to die {self.slavethreads}")
                 for slave in self.slavethreads:
-                    if not slave.thread.is_alive():
-                        # for tracking errors
-                        log.error(f"a thread is already dead?")
-                        continue
-                    # we want to make sure they're done before we kill them
-                    slave.submit(die_mf)    # slave THREAD
-                    # do we need to wait for the queue to drain?  Is that even a good idea?
+                    if slave is not None:
+                        log.debug(f"sending die to {slave}")
+                        slave.submit(die_mf)    # slave THREAD
+                        # do we need to wait for the queue to drain?  Is that even a good idea?
 
-                    # have to leave a lot of time in case it has a full inputq
-                    slave.thread.join(timeout=5.0)    # wait for it to die
-                    if slave.thread.is_alive():
-                        log.error(f"a thread didn't die!")
+                log.debug(f"{self} done telling threads")
+                #while threading.active_count() > 0:
+                #    log.debug(f"{threading.active_count()} threads are alive still")
+
+                # have to leave a lot of time in case it has a full inputq?
+                for slave in self.slavethreads:
+                    if slave is not None:
+                        log.debug(f"{self} joining thread {slave}")
+                        slave.thread.join(timeout=30.0)    # wait for it to die
+                        if slave.thread.is_alive():
+                            log.error(f"a thread didn't die!")
+
                 del self.inputq
                 return  # Goodbye, cruel world!
                 # all are daemon threads, so when this process dies, so do all the threads
+
+            #log.debug(f"slave process {self} received job")
 
             # check here to make sure we can get the host object; if not, toss the job - we won't be able to call the api anyway
             hostobj = cluster.get_hostobj_byname(job.hostname)
@@ -186,7 +207,7 @@ class SlaveProcess(object):
                 self.bucket_array.append(job.hostname)
                 this_hash = self.bucket_array.index(job.hostname)
 
-            bucket = this_hash % len(self.slavesthreads)
+            bucket = this_hash % len(self.slavethreads)
 
 
             if bucket not in slavestats:
@@ -201,11 +222,12 @@ class SlaveProcess(object):
 
 
             # create a thread for the bucket, if needed
-            if self.slavesthreads[bucket] is None:
-                self.slavesthreads[bucket] = SlaveThread(self.cluster, self.outputq)    # start them on demand
+            if self.slavethreads[bucket] is None:
+                log.debug(f"creating slave thread {bucket}")
+                self.slavethreads[bucket] = SlaveThread(self.cluster, self.outputq)    # start them on demand
 
             # submit the job to a thread
-            self.slavesthreads[bucket].submit(job)
+            self.slavethreads[bucket].submit(job)
             self.inputq.task_done()
 
     # process join
@@ -244,7 +266,7 @@ class Async():
     def __del__(self):
         for slave in self.slaves:
             slave.submit(die_mf)
-            slave.proc.join(5.0)    # wait for it to die
+            slave.proc.join(5.0)    # wait for it to die (proc join)
         del self.outputq
 
     # submit a job
@@ -283,25 +305,54 @@ class Async():
 
         #self.log_stats()
 
-        # inputq is a multiprocessing.JoinableQueue
-        # wait for inputq's to drain
-        for slave in self.slaves:
-            slave.inputq.join()    # wait for the inputq to drain
+        log.debug(f"{threading.active_count()} threads active")
 
-        # all the slaves should be dead, we join()ed them above
+        #for slave in self.slaves:
+        #    slave.proc.terminate()  # testing
+
+        for slave in self.slaves:
+            log.debug(f"sending die to {slave}")
+            slave.submit(die_mf)    # tell the subprocess that we're done queueing tasks
+
+        # inputq is a multiprocessing.JoinableQueue
+        # outputq is a multiprocessing.Queue()
+        # wait for inputq's to drain
+        timed_out=False
+        timeout_period = 30.0
+        #timeout_period = 5.0 # testing
         while self.num_outstanding > 0:
             try:
-                result = self.outputq.get(True, 10.0)
+                log.debug(f"outputq size is {self.outputq.qsize()}")
+                result = self.outputq.get(True, timeout=timeout_period)   # don't block because they should be dead
             except queue.Empty as exc:
+                # timed out - if timeout is specified, it either returns an item or queue.Empty on timeout
                 log.error(f"outputq timeout!")  # should never happen because they're dead
-                # queue is empty, just return
-                return
+                if not timed_out:
+                    # we've timed out once already
+                    timed_out = True
+                    timeout_period = 0.01     # changing timeout period limits our max wait time
+                self.num_outstanding -= 1   # just get rid of them
+                continue
+
             self.num_outstanding -= 1
             if not result.exception:
                 if len(result.result) != 0:
                     yield result        # yield so it is an iterator
             else:
                 log.debug(f"API sent error: {result.result}")
+
+        for slave in self.slaves:
+            # wait for proc to finish processing inputq and die; timeout is 30s?
+            log.debug(f"joining {slave}")
+            slave.proc.join(0.1)    # don't wait for him, just kill him below
+            log.debug(f"{slave} joined")
+            if slave.proc.exitcode is None:
+                # timed out - hung process!?
+                log.debug(f"killing {slave}")
+                if sys.version_info.minor < 7:
+                    slave.proc.terminate()  # can't be rude
+                else:
+                    slave.proc.kill()   # we would rather be rude about it
 
         # queue should be empty now
         return

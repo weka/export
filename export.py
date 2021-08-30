@@ -28,7 +28,7 @@ from lokilogs import LokiServer
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 #VERSION = "experimental"
 
 # set the root log
@@ -83,13 +83,16 @@ def prom_client(config):
     if 'timeout' not in config['exporter']:
         config['exporter']['timeout'] = 10
 
+    if 'backends_only' not in config['exporter']:
+        config['exporter']['backends_only'] = False
+
     log.info(f"Timeout set to {config['exporter']['timeout']} secs")
 
     try:
         cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth_token_file'], 
                                   force_https=config['cluster']['force_https'], 
                                   verify_cert=config['cluster']['verify_cert'], 
-                                  backends_only=False,
+                                  backends_only=config['exporter']['backends_only'],
                                   timeout=config['exporter']['timeout'])
     except wekalib.exceptions.HTTPError as exc:
         if exc.code == 403:
