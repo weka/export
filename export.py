@@ -28,7 +28,7 @@ from lokilogs import LokiServer
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "1.5.0"
+VERSION = "1.5.1"
 #VERSION = "experimental"
 
 # set the root log

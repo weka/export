@@ -76,7 +76,7 @@ class SlaveThread(object):
                         # retry a few times
                         job.times_in_q += 1
                         self.submit(job)
-                        self.inputq.task_done()
+                        #self.inputq.task_done()
                         continue    # go back to the inputq.get()
                     # trex - take this out for now... extending scrape times too much
                     #elif job.times_in_q <= 12:  # give it 2 more chances
@@ -105,7 +105,7 @@ class SlaveThread(object):
             #log.info(f"job.result={json.dumps(job.result, indent=2)}")
             log.debug(f"slave thread {self} queuing output")
             self.outputq.put(job)
-            self.inputq.task_done()
+            #self.inputq.task_done()
 
     # slave thread submit
     def submit(self, job):
@@ -119,7 +119,8 @@ class SlaveProcess(object):
         self.cluster = cluster
         self.outputq = outputq
         self.queuesize = 0
-        self.inputq = multiprocessing.JoinableQueue(500) # 50,000 max entries?
+        #self.inputq = multiprocessing.JoinableQueue(500) # 50,000 max entries?
+        self.inputq = multiprocessing.Queue(500) # 50,000 max entries?
 
         self.slavethreads = list()
         self.num_threads = num_threads
@@ -138,6 +139,10 @@ class SlaveProcess(object):
     def __str__(self):
         return self.proc.name
 
+
+    def flush(self):
+        self.inputq.close()
+        self.inputq.join_thread()   # needed?
 
     # this is the main loop of the process created above
     def slave_process(self, cluster):
@@ -184,6 +189,8 @@ class SlaveProcess(object):
                             log.error(f"a thread didn't die!")
 
                 del self.inputq
+                self.outputq.close()    # flush data to the ouputq
+                self.outputq.join_thread()  # not sure if this is required or a bad idea
                 return  # Goodbye, cruel world!
                 # all are daemon threads, so when this process dies, so do all the threads
 
@@ -197,7 +204,7 @@ class SlaveProcess(object):
                 job.result = wekalib.exceptions.APIError(f"{job.hostname}: (NOHOST) Host object not found") # send as APIError
                 job.exception = True
                 self.outputq.put(job)       # say it didn't work
-                self.inputq.task_done()     # complete the item on the inputq so parent doesn't hang
+                #self.inputq.task_done()     # complete the item on the inputq so parent doesn't hang
                 continue
 
             # new stuff
@@ -228,7 +235,7 @@ class SlaveProcess(object):
 
             # submit the job to a thread
             self.slavethreads[bucket].submit(job)
-            self.inputq.task_done()
+            #self.inputq.task_done()
 
     # process join
     def join(self):
@@ -264,9 +271,9 @@ class Async():
 
     # kill the slave processes
     def __del__(self):
-        for slave in self.slaves:
-            slave.submit(die_mf)
-            slave.proc.join(5.0)    # wait for it to die (proc join)
+        #for slave in self.slaves:
+        #    slave.submit(die_mf)
+        #    slave.proc.join(5.0)    # wait for it to die (proc join)
         del self.outputq
 
     # submit a job
@@ -313,6 +320,7 @@ class Async():
         for slave in self.slaves:
             log.debug(f"sending die to {slave}")
             slave.submit(die_mf)    # tell the subprocess that we're done queueing tasks
+            slave.flush()
 
         # inputq is a multiprocessing.JoinableQueue
         # outputq is a multiprocessing.Queue()
