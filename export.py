@@ -28,7 +28,7 @@ from lokilogs import LokiServer
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "1.5.1"
+VERSION = "1.5.2"
 #VERSION = "experimental"
 
 # set the root log
@@ -196,6 +196,7 @@ def configure_logging(logger, verbosity):
     # local modules
     logging.getLogger("collector").setLevel(loglevel)
     logging.getLogger("lokilogs").setLevel(loglevel)
+    logging.getLogger("async_api").setLevel(loglevel)
 
 
 def main():
