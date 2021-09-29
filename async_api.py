@@ -65,45 +65,47 @@ class SlaveThread(object):
             #else:
             #    log.debug(f"slave thread {self} received job")
 
-            hostobj = self.cluster.get_hostobj_byname(job.hostname)
-            try:
-                job.result = hostobj.call_api(job.method, job.parms)
-                job.exception = False
-            except wekalib.exceptions.HTTPError as exc:
-                if exc.code == 502:  # Bad Gateway - a transient error
-                    log.error(f"slave thread received Bad Gateway on host {job.hostname}")
-                    if job.times_in_q <= 2: # lowered from 10 retries
+            for retries in range(1,3):
+                hostobj = self.cluster.get_hostobj_byname(job.hostname)
+                try:
+                    job.result = hostobj.call_api(job.method, job.parms)
+                    job.exception = False
+                    break
+                except wekalib.exceptions.HTTPError as exc:
+                    if exc.code == 502:  # Bad Gateway - a transient error
+                        log.error(f"slave thread {self} received Bad Gateway on host {job.hostname}")
                         # retry a few times
+                        log.debug(f"{self} retrying after Bad Gateway")
                         job.times_in_q += 1
-                        self.submit(job)
+                        #self.submit(job)
+                        time.sleep(0.5) # make it yield so maybe the server will recover
                         #self.inputq.task_done()
+                        job.result = wekalib.exceptions.APIError(f"{exc.host}: ({exc.code}) {exc.message}") # send as APIError
+                        job.exception = True
                         continue    # go back to the inputq.get()
-                    # trex - take this out for now... extending scrape times too much
-                    #elif job.times_in_q <= 12:  # give it 2 more chances
-                    #    # then sleep to give the cluster a little time to recover
-                    #    time.sleep(0.5) # might be the only thing in the queue...
-                    #    job.times_in_q += 1
-                    #    self.submit(job)
-                    #    self.inputq.task_done()
-                    #    continue    # go back to the inputq.get()
 
-                # else, give up and return the error - note: multiprocessing.queue module hates HTTPErrors - can't unpickle correctly
-                job.result = wekalib.exceptions.APIError(f"{exc.host}: ({exc.code}) {exc.message}") # send as APIError
-                job.exception = True
-            except wekalib.exceptions.TimeoutError as exc:
-                job.result = exc
-                job.exception = True
-                log.error(f"{exc}")
-            except Exception as exc:
-                job.result = exc
-                job.exception = True
-                log.info(f"Exception recieved on host {job.hostname}:{exc}")
-                log.info(traceback.format_exc())
+                except wekalib.exceptions.TimeoutError as exc:
+                    job.result = exc
+                    job.exception = True
+                    log.error(f"{exc}")
+                    break
+                except Exception as exc:
+                    job.result = exc
+                    job.exception = True
+                    log.info(f"Exception recieved on host {job.hostname}:{exc}")
+                    log.info(traceback.format_exc())
+                    break
+
+            # else, give up and return the error - note: multiprocessing.queue module hates HTTPErrors - can't unpickle correctly
+            #job.result = wekalib.exceptions.APIError(f"{exc.host}: ({exc.code}) {exc.message}") # send as APIError
+            #job.exception = True
+            if job.exception and type(job.result) is wekalib.exceptions.APIError:
+                log.debug(f"{self} noting Bad Gateway exception, returning exception")
 
 
             # this will send back the above exeptions as well as good results
             #log.info(f"job.result={json.dumps(job.result, indent=2)}")
-            log.debug(f"slave thread {self} queuing output")
+            log.debug(f"slave thread {self} queuing output.. Is exception = {job.exception}")
             self.outputq.put(job)
             #self.inputq.task_done()
 
@@ -330,7 +332,7 @@ class Async():
         #timeout_period = 5.0 # testing
         while self.num_outstanding > 0:
             try:
-                log.debug(f"outputq size is {self.outputq.qsize()}")
+                log.debug(f"outputq size is {self.outputq.qsize()}, num_outstanding is {self.num_outstanding}")
                 result = self.outputq.get(True, timeout=timeout_period)   # don't block because they should be dead
             except queue.Empty as exc:
                 # timed out - if timeout is specified, it either returns an item or queue.Empty on timeout

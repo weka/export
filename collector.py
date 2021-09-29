@@ -249,8 +249,10 @@ class WekaCollector(object):
                     return  # raise?
 
             # yield for each metric 
+            log.debug("Yielding metrics")
             for metric in metric_objs.values():
                 yield metric
+            log.debug("Yielding complete")
 
             # report time if we gathered, otherwise, it's meaningless
             if should_gather:
@@ -258,9 +260,11 @@ class WekaCollector(object):
             else:
                 elapsed = self.last_elapsed
 
+            log.debug("Yielding process metrics")
             yield GaugeMetricFamily('weka_collect_seconds', 'Total Time spent in Prometheus collect', value=self.last_elapsed)
             yield GaugeMetricFamily('weka_collect_apicalls', 'Total number of api calls',
                                     value=self.api_stats['num_calls'])
+            log.debug("Yielding process metrics complete")
 
             if not second_pass:
                 log.info(
@@ -651,8 +655,8 @@ class WekaCollector(object):
         #
         # yes, I know it's convoluted... it was hard to write, so it *should* be hard to read. ;)
         #print(json.dumps(wekadata, indent=2))
-        log.debug(f"io stats cluster={cluster.name}")
-        log.debug(json.dumps(stats_data, indent=2))
+        #log.debug(f"io stats cluster={cluster.name}")
+        #log.debug(json.dumps(stats_data, indent=2))
 
         """
         [{
@@ -671,7 +675,7 @@ class WekaCollector(object):
         }]
         """
 
-        log.debug(json.dumps(weka_stat_list, indent=2))
+        #log.debug(json.dumps(weka_stat_list, indent=2))
 
         for statistic in stats_data:
             node = statistic['node']
