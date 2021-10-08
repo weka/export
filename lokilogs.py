@@ -76,11 +76,12 @@ class LokiServer(object):
             log.critical(f"Unable to send Events to Loki")
             raise
 
+        log.debug(f"status code: {answer.status_code}")
         # check the return code
         if answer.status_code == 400:
             # I've only seen code 400 for duplicate entries; but I could be wrong. ;)
             log.error(f"Error posting event; possible duplicate entry: {answer.text}")
-            return True  # ignore the error so we don't retry submission forever
+            return False
         elif answer.status_code != 204:  # 204 is ok
             log.error("loki_logevent(): bad http status code: " + str(answer.status_code) + " " + answer.text)
             return False
@@ -102,12 +103,12 @@ class LokiServer(object):
         last_eventtime = "0"
         for timestamp, event in sorted(event_dict.items()):  # oldest first
             labels = {
-                "type": "weka",
-                "cluster": cluster.name
+                "source": "weka",
+                "cluster": cluster.name,
+                "category": event["category"],
+                "event_type": event["type"],
+                "severity": event["severity"]
             }
-            # "category": event["category"],
-            # "type": event["type"],
-            # "severity": event["severity"],
             # "node_id": event["nid"],
 
             # map weka event severities to Loki event severities
@@ -123,9 +124,9 @@ class LokiServer(object):
                 if self.loki_logevent(timestamp, description, labels=labels):
                     # only update time if upload successful, so we don't drop events (they should retry upload next time)
                     cluster.last_event_timestamp = event['timestamp']
-                    num_successful += 1
+                num_successful += 1
             except:
-                break   # if it has an exception, abort 
+                continue   # if it has an exception, abort 
 
 
         log.info(f"Total events={len(event_dict)}; successfully sent {num_successful} events")

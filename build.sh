@@ -1,4 +1,5 @@
 TOOL=export
+export LD_LIBRARY_PATH=/usr/local/lib
 pyinstaller --hidden-import wekalib --onefile ${TOOL}.py
 
 TARGET=tarball/$TOOL
