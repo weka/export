@@ -124,7 +124,7 @@ class LokiServer(object):
                 if self.loki_logevent(timestamp, description, labels=labels):
                     # only update time if upload successful, so we don't drop events (they should retry upload next time)
                     cluster.last_event_timestamp = event['timestamp']
-                num_successful += 1
+                    num_successful += 1
             except:
                 continue   # if it has an exception, abort 
 
