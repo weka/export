@@ -1,0 +1,24 @@
+# systemd unit file for Weka Export
+[Unit]
+Description=Weka Export
+Documentation=https://github.com/weka/export
+After=network-online.target local-fs.target
+Wants=network-online.target local-fs.target
+AssertFileIsExecutable=/opt/weka/export/export
+AssertFileNotEmpty=/opt/weka/export/export.yml
+
+[Service]
+Environment=LAUNCHED_BY_SYSTEMD=YES
+WorkingDirectory=/opt/weka/export
+ExecStart=/opt/weka/export/export -v -c /opt/weka/export/export.yml
+# You should change the above line to match your environment
+
+# Let systemd restart this service always
+Restart=always
+
+# Disable timeout login and wait until process is stopped
+TimeoutStopSec=infinity
+SendSIGKILL=no
+
+[Install]
+WantedBy=multi-user.target

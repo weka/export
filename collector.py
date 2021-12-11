@@ -710,7 +710,7 @@ class WekaCollector(object):
                 unit]
 
             #log.debug(f"unit={unit}")
-            if unit != 'sizes':
+            if (unit != 'sizes') and (unit != "Blocks"):
                 try:
                     metric_objs['weka_stats_gauge'].add_metric(labelvalues, value,
                                        timestamp=wekatime_to_datetime(timestamp).timestamp())

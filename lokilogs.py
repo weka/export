@@ -14,7 +14,7 @@ import json
 import time
 import socket
 import sys
-from logging import getLogger
+from logging import getLogger, INFO
 
 import dateutil
 import dateutil.parser
@@ -112,13 +112,16 @@ class LokiServer(object):
             # "node_id": event["nid"],
 
             # map weka event severities to Loki event severities
+            orig_sev = event['severity']
             if event['severity'] == 'MAJOR' or event['severity'] == 'MINOR':
                 event['severity'] = 'ERROR'
             elif event['severity'] == 'CRITICAL':
                 event['severity'] = 'FATAL'
 
-            description = f"cluster:{cluster.name} :{event['severity']}: {event['type']}: {event['description']}"
+            description = f"cluster:{cluster.name} :{orig_sev}: {event['type']}: {event['description']}"
             log.debug(f"sending event: timestamp={timestamp}, labels={labels}, desc={description}")
+
+            log.log(INFO, f"WekaEvent: {description}") # send to syslog
 
             try:
                 if self.loki_logevent(timestamp, description, labels=labels):
