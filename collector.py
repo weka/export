@@ -692,6 +692,8 @@ class WekaCollector(object):
                 #log.debug(f"cat={category}, stat={stat}")
                 #weka_stat_list[category].update({stat:unit})
                 value = statistic['stat_value']
+                if value is None:
+                    continue    # None values make prometheus_client puke
                 timestamp = statistic['timestamp']
                 unit = weka_stat_list[category][stat]
             except Exception as exc:
