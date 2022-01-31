@@ -693,6 +693,7 @@ class WekaCollector(object):
                 #weka_stat_list[category].update({stat:unit})
                 value = statistic['stat_value']
                 if value is None:
+                    log.error(f"None value for {hostname}, {category}/{stat}")
                     continue    # None values make prometheus_client puke
                 timestamp = statistic['timestamp']
                 unit = weka_stat_list[category][stat]
