@@ -17,6 +17,10 @@ import sys
 # initialize logger - configured in main routine
 log = getLogger(__name__)
 
+# stupid macos doesn't fork by default
+from multiprocessing import set_start_method
+set_start_method("fork")
+
 # this is a hidden class
 class Job(object):
     def __init__(self, hostname, category, stat, method, parms):
@@ -122,7 +126,11 @@ class SlaveProcess(object):
         self.outputq = outputq
         self.queuesize = 0
         #self.inputq = multiprocessing.JoinableQueue(500) # 50,000 max entries?
-        self.inputq = multiprocessing.Queue(500) # 50,000 max entries?
+        try:
+            self.inputq = multiprocessing.Queue(500) # 50,000 max entries?
+        except OSError as exc:
+            log.critical(f"Cannot create Queue, {exc}, exiting")
+            sys.exit(1)
 
         self.slavethreads = list()
         self.num_threads = num_threads
@@ -333,6 +341,10 @@ class Async():
         while self.num_outstanding > 0:
             try:
                 log.debug(f"outputq size is {self.outputq.qsize()}, num_outstanding is {self.num_outstanding}")
+            except NotImplementedError:
+                pass    # stupid macos returns error because qsize is broken in the OS
+
+            try:
                 result = self.outputq.get(True, timeout=timeout_period)   # don't block because they should be dead
             except queue.Empty as exc:
                 # timed out - if timeout is specified, it either returns an item or queue.Empty on timeout
