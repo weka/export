@@ -140,7 +140,7 @@ def prom_client(config):
             collector.collect_logs(lokiserver)
 
 
-def configure_logging(logger, verbosity):
+def configure_logging(logger, verbosity, disable_syslog=False):
     loglevel = logging.INFO     # default logging level
     libloglevel = logging.ERROR
 
@@ -171,18 +171,19 @@ def configure_logging(logger, verbosity):
     console_handler.setFormatter(logging.Formatter(console_format))
     logger.addHandler(console_handler)
 
-    # create handler to log to syslog
-    logger.info(f"setting syslog on {platform.platform()}")
-    if platform.platform()[:5] == "macOS":
-        syslogaddr = "/var/run/syslog"
-    else:
-        syslogaddr = "/dev/log"
-    syslog_handler = logging.handlers.SysLogHandler(syslogaddr)
-    syslog_handler.setFormatter(logging.Formatter(syslog_format))
+    if not disable_syslog:
+        # create handler to log to syslog
+        logger.info(f"setting syslog on {platform.platform()}")
+        if platform.platform()[:5] == "macOS":
+            syslogaddr = "/var/run/syslog"
+        else:
+            syslogaddr = "/dev/log"
+        syslog_handler = logging.handlers.SysLogHandler(syslogaddr)
+        syslog_handler.setFormatter(logging.Formatter(syslog_format))
 
-    # add syslog handler to root logger
-    if syslog_handler is not None:
-        logger.addHandler(syslog_handler)
+        # add syslog handler to root logger
+        if syslog_handler is not None:
+            logger.addHandler(syslog_handler)
 
     # set default loglevel
     logger.setLevel(loglevel)
@@ -206,6 +207,7 @@ def main():
     parser = argparse.ArgumentParser(description="Prometheus Client for Weka clusters")
     parser.add_argument("-c", "--configfile", dest='configfile', default="./export.yml",
                         help="override ./export.yml as config file")
+    parser.add_argument("--no_syslog", action="store_true", default=False, help="Disable syslog logging")
     parser.add_argument("-v", "--verbosity", action="count", default=0, help="increase output verbosity")
     parser.add_argument("--version", dest="version", default=False, action="store_true", help="Display version number")
     args = parser.parse_args()
@@ -214,7 +216,7 @@ def main():
         print(f"{sys.argv[0]} version {VERSION}")
         sys.exit(0)
 
-    configure_logging(log, args.verbosity)
+    configure_logging(log, args.verbosity, disable_syslog=args.no_syslog)
 
     if not os.path.exists(args.configfile):
         log.critical(f"Required configfile '{args.configfile}' does not exist")
