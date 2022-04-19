@@ -13,9 +13,9 @@ import traceback
 from logging import getLogger
 from threading import Lock
 
-import wekalib
 from prometheus_client.core import GaugeMetricFamily, InfoMetricFamily, GaugeHistogramMetricFamily
 # local imports
+import wekalib
 from wekalib.wekatime import wekatime_to_datetime
 from wekalib.circular import circular_list
 
@@ -112,6 +112,7 @@ class WekaCollector(object):
         self.max_procs = config['exporter']['max_procs']
         self.max_threads_per_proc = config['exporter']['max_threads_per_proc']
         self.backends_only = config['exporter']['backends_only']
+        self.map_registry = config["map_registry"]
 
         self.cluster = cluster_obj
 
@@ -362,19 +363,25 @@ class WekaCollector(object):
         #    do in a try/except block because it can fail if the cluster changes while we're collecting data
 
         # clear old maps, if any - if nodes come/go this can get funky with old data, so re-create it every time
-        weka_maps = {"node-host": {}, "node-role": {}, "host-role": {}}  # initial state of maps
+        #weka_maps = {"node-host": {}, "node-role": {}, "host-role": {}}  # initial state of maps
+        node_host_map = dict()
+        node_role_map = dict()
+        host_role_map = dict()
 
         # populate maps
         try:
             for node in wekadata["nodeList"]:
-                weka_maps["node-host"][node["node_id"]] = node["hostname"]
-                weka_maps["node-role"][node["node_id"]] = node["roles"]  # note - this is a list
-                #weka_maps["host-nids"] = 
+                node_host_map[node["node_id"]] = node["hostname"]
+                node_role_map[node["node_id"]] = node["roles"]
             for host in wekadata["hostList"]:
                 if host["mode"] == "backend":
-                    weka_maps["host-role"][host["hostname"]] = "server"
+                    host_role_map[host["hostname"]] = "server"
                 else:
-                    weka_maps["host-role"][host["hostname"]] = "client"
+                    host_role_map[host["hostname"]] = "client"
+            # update the maps so they can be used in the loki module
+            self.map_registry.register('node-host', node_host_map)
+            self.map_registry.register('node-role', node_role_map)
+            self.map_registry.register('node-role', host_role_map)
         except Exception as exc:
             log.error("error building maps. Aborting data gather from cluster {}".format(str(cluster)))
             return
@@ -393,10 +400,10 @@ class WekaCollector(object):
 
         # log.debug(f'{weka_maps["node-role"]}')
 
-        for node in weka_maps["node-role"]:  # node == "NodeId<xx>"
-            for role in weka_maps['node-role'][node]:
+        for node in node_role_map:  # node == "NodeId<xx>"
+            for role in node_role_map[node]:
                 nid = int(node.split('<')[1].split('>')[0])  # make nodeid numeric
-                hostname = weka_maps["node-host"][node]
+                hostname = node_host_map[node]
                 if hostname not in node_maps[role]:
                     node_maps[role][hostname] = list()
                 node_maps[role][hostname].append(nid) # needs to be dict of host:[nid]
@@ -419,9 +426,9 @@ class WekaCollector(object):
             if host['status'] == 'UP' and host['state'] == 'ACTIVE':
                 up_list.append(host['hostname'])
 
-        log.debug(f"weka_maps['node-host']={weka_maps['node-host']}")
+        log.debug(f"node_host_map ={node_host_map}")
         one_call_nids = dict()
-        for node, hostname in weka_maps['node-host'].items():
+        for node, hostname in node_host_map.items():
             nid = int(node.split('<')[1].split('>')[0])  # make nodeid numeric
             if hostname not in one_call_nids:
                 one_call_nids[hostname] = [nid]
@@ -680,9 +687,9 @@ class WekaCollector(object):
         for statistic in stats_data:
             node = statistic['node']
             try:
-                hostname = weka_maps["node-host"][node]
-                host_role = weka_maps["host-role"][hostname]
-                role_list = weka_maps["node-role"][node]
+                hostname = node_host_map[node]
+                host_role = host_role_map[hostname]
+                role_list = node_role_map[node]
                 if len(role_list) > 1:
                     role = "multiple"   # punt for now? Vince  - Might want to list CPU_UTIL multiple times, once per role??
                 else:
