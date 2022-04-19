@@ -21,14 +21,16 @@ import socket
 
 import prometheus_client
 
+# local imports
+#from maps import Map, MapRegistry
+from maps import MapRegistry
 import wekalib.signals as signals
 from collector import WekaCollector
 from lokilogs import LokiServer
-# local imports
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "1.5.5"
+VERSION = "1.5.6"
 #VERSION = "experimental"
 
 # set the root log
@@ -110,12 +112,15 @@ def prom_client(config):
         log.critical(traceback.format_exc())
         return
 
+    maps = MapRegistry()
+    config["map_registry"] = maps
+
     # create the WekaCollector object
     collector = WekaCollector(config, cluster_obj)
 
     if config['exporter']['loki_host'] is not None:
         try:
-            lokiserver = LokiServer(config['exporter']['loki_host'], config['exporter']['loki_port'])
+            lokiserver = LokiServer(config['exporter']['loki_host'], config['exporter']['loki_port'], maps)
         except:
             sys.exit(1)
     else:

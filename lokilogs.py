@@ -26,9 +26,10 @@ from wekalib.wekatime import lokitime_to_wekatime, wekatime_to_datetime, lokitim
 log = getLogger(__name__)
 
 class LokiServer(object):
-    def __init__(self, lokihost, lokiport):
+    def __init__(self, lokihost, lokiport, map_registry):
         self.host = lokihost
         self.port = lokiport
+        self.registry = map_registry
         # save some trouble, and make sure names are resolvable
         try:
             socket.gethostbyname(lokihost)
@@ -94,13 +95,14 @@ class LokiServer(object):
     def send_events(self, event_dict, cluster):
 
         num_successful = 0
+        node_host_map = self.registry.lookup('node-host')
 
         if len(event_dict) == 0:
             log.debug("No events to send")
             return
 
         # must be sorted by timestamp or Loki will reject them
-        last_eventtime = "0"
+        #last_eventtime = "0"
         for timestamp, event in sorted(event_dict.items()):  # oldest first
             labels = {
                 "source": "weka",
@@ -110,6 +112,25 @@ class LokiServer(object):
                 "severity": event["severity"]
             }
             # "node_id": event["nid"],
+            if 'params' in event:
+                params = event['params']
+                log.debug(f'{event["description"]}:::::{params}')
+                if 'hostname' in params:
+                    labels['hostname'] = params['hostname']
+                if 'nodeId' in params:
+                    labels['nodeid'] = str(params['nodeId'])
+                    if 'hostname' not in labels:
+                        if type(params['nodeId']) is not str:
+                            formatted_nodeid = 'NodeId<' + f'{params["nodeId"]}>'
+                        else:
+                            formatted_nodeid = params['nodeId']
+                        try:
+                            hostname = node_host_map[formatted_nodeid]
+                        except Exception as exc:
+                            log.error(f"NodeId {formatted_nodeid} not in node-host map!")
+                            hostname = 'error'
+                            log.debug("setting hostname*************************************************************")
+                        labels['hostname'] = hostname
 
             # map weka event severities to Loki event severities
             orig_sev = event['severity']
