@@ -1,6 +1,6 @@
 FROM ubuntu:20.04
 
-
+RUN apt update
 ARG BASEDIR="/weka"
 ARG ID="472"
 ARG USER="weka"
