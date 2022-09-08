@@ -244,14 +244,14 @@ class WekaCollector(object):
                     log.critical(f"Unable to resolve names")
                     labelvalues = [str(self.cluster), 'ExporterResolveError',
                                    f'weka-mon exporter cannot collect data {exc}',
-                                   None, None, None, None]
+                                   "None", "None", "None", "None"]
                     metric_objs['alerts'].add_metric(labelvalues, 1.0)
                     # sys.exit(1)
                 except Exception as exc:
                     log.critical(f"Error gathering data: {exc}, {traceback.format_exc()}")
                     labelvalues = [str(self.cluster), 'ExporterCriticalError',
                                    f'weka-mon exporter cannot collect data {exc}',
-                                   None, None, None, None]
+                                   "None", "None", "None", "None"]
                     metric_objs['alerts'].add_metric(labelvalues, 1.0)
                     # log.critical(traceback.format_exc()) # vince - post an alert here?
                     # return
