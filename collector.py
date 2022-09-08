@@ -246,15 +246,12 @@ class WekaCollector(object):
                                    f'weka-mon exporter cannot collect data: {exc}',
                                    "None", "None", "None", "None"]
                     metric_objs['alerts'].add_metric(labelvalues, 1.0)
-                    # sys.exit(1)
                 except Exception as exc:
                     log.critical(f"Error gathering data: {exc}, {traceback.format_exc()}")
                     labelvalues = [str(self.cluster), 'ExporterCriticalError',
                                    f'weka-mon exporter cannot collect data: {exc}',
                                    "None", "None", "None", "None"]
                     metric_objs['alerts'].add_metric(labelvalues, 1.0)
-                    # log.critical(traceback.format_exc()) # vince - post an alert here?
-                    # return
 
             # yield for each metric 
             log.debug("Yielding metrics")
@@ -308,7 +305,6 @@ class WekaCollector(object):
 
 
     def store_results(self, cluster, results):
-        # new stuff - vince
         for result in results:      # remember, APICall objects
             stat = result.opaque[0]
             category = result.opaque[1]
@@ -351,12 +347,9 @@ class WekaCollector(object):
             cluster.refresh()
         except wekalib.exceptions.NameNotResolvable as exc:
             log.critical(f"Names are not resolvable - are they in /etc/hosts or DNS? {exc}")
-            # vince - post alert here?
             raise
         except Exception as exc:
             log.error(f"Cluster refresh failed on cluster '{cluster}' - check connectivity ({exc})")
-            # vince - post alert here?
-            #log.error(traceback.format_exc())
             return
 
         # set up async api calling subsystem
