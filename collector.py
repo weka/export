@@ -236,18 +236,22 @@ class WekaCollector(object):
             else:
                 second_pass = True
 
-
             if should_gather:
                 log.info("gathering")
                 try:
                     self.gather()
                 except wekalib.exceptions.NameNotResolvable as exc:
-                    log.critical(f"Unable to resolve names; terminating")
-                    sys.exit(1)
+                    log.critical(f"Unable to resolve names")
+                    labelvalues = [str(self.cluster), 'ExporterResolveError',
+                                   f'weka-mon exporter cannot collect data: {exc}',
+                                   "None", "None", "None", "None"]
+                    metric_objs['alerts'].add_metric(labelvalues, 1.0)
                 except Exception as exc:
                     log.critical(f"Error gathering data: {exc}, {traceback.format_exc()}")
-                    #log.critical(traceback.format_exc())
-                    return  # raise?
+                    labelvalues = [str(self.cluster), 'ExporterCriticalError',
+                                   f'weka-mon exporter cannot collect data: {exc}',
+                                   "None", "None", "None", "None"]
+                    metric_objs['alerts'].add_metric(labelvalues, 1.0)
 
             # yield for each metric 
             log.debug("Yielding metrics")
@@ -301,7 +305,6 @@ class WekaCollector(object):
 
 
     def store_results(self, cluster, results):
-        # new stuff - vince
         for result in results:      # remember, APICall objects
             stat = result.opaque[0]
             category = result.opaque[1]
@@ -347,7 +350,6 @@ class WekaCollector(object):
             raise
         except Exception as exc:
             log.error(f"Cluster refresh failed on cluster '{cluster}' - check connectivity ({exc})")
-            #log.error(traceback.format_exc())
             return
 
         # set up async api calling subsystem
@@ -358,12 +360,7 @@ class WekaCollector(object):
             wekadata[stat] = cluster.call_api(command['method'], command['parms'])
             self.api_stats['num_calls'] += 1
 
-
-        # build maps - need this for decoding data, not collecting it.
-        #    do in a try/except block because it can fail if the cluster changes while we're collecting data
-
         # clear old maps, if any - if nodes come/go this can get funky with old data, so re-create it every time
-        #weka_maps = {"node-host": {}, "node-role": {}, "host-role": {}}  # initial state of maps
         node_host_map = dict()
         node_role_map = dict()
         host_role_map = dict()
