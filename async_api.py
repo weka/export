@@ -23,10 +23,8 @@ set_start_method("fork")
 
 # this is a hidden class
 class Job(object):
-    def __init__(self, hostname, category, stat, method, parms):
+    def __init__(self, hostname, method, parms):
         self.hostname = hostname
-        self.category = category
-        self.stat = stat
         self.method = method
         self.parms = parms
         self.result = dict()
@@ -34,10 +32,10 @@ class Job(object):
         self.times_in_q = 1
 
     def __str__(self):
-        return f"{self.hostname},{self.category},{self.stat},{json.dumps(self.result,indent=2)}"
+        return f"{self.hostname},{json.dumps(self.result,indent=2)}"
 
 
-die_mf = Job(None, None, None, None, None)
+die_mf = Job(None, None, None)
 
 # this is a hidden class
 class SlaveThread(object):
@@ -174,7 +172,7 @@ class SlaveProcess(object):
         while True:
             #log.debug(f"waiting on queue")
             job = self.inputq.get()
-            #log.debug(f"got job from queue, {job.hostname}, {job.category}, {job.stat}")
+            #log.debug(f"got job from queue, {job.hostname}")
 
             log.debug(f"slave process {self} received job hostname={job.hostname}")
             if job.hostname is None:
@@ -287,8 +285,8 @@ class Async():
         del self.outputq
 
     # submit a job
-    def submit(self, hostname, category, stat, method, parms):
-        job = Job(hostname, category, stat, method, parms)      # wekahost?  Object? decisions, decisions
+    def submit(self, hostname, method, parms):
+        job = Job(hostname, method, parms)      # wekahost?  Object? decisions, decisions
         log.debug(f"submitting job {job}")
         try:
             this_hash = self.bucket_array.index(hostname)

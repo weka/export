@@ -121,7 +121,6 @@ class WekaCollector(object):
         #print(json.dumps(config['stats'],indent=4))
         #weka_stat_list = config['stats']
         weka_stat_list = dict()
-        one_call_cat = list()
         one_call_stat = list()
         for category, stats in config['stats'].items():
             log.debug(f"category={category}, stats={stats}")
@@ -132,11 +131,9 @@ class WekaCollector(object):
                 for stat, unit in stats.items():
                     #log.debug(f"stat={stat}, unit={unit}")
                     weka_stat_list[category].update({stat:unit})
-                    one_call_cat.append(category)
-                    one_call_stat.append(stat)
+                    one_call_stat.append(f"{category}.{stat}")
 
 
-        #log.debug(f"one_call_cat={len(one_call_cat)}")
         #log.debug(f"one_call_stat={len(one_call_stat)}")
 
         #log.debug(f"weka_stat_list={weka_stat_list}")
@@ -161,9 +158,9 @@ class WekaCollector(object):
         """
 
 
-        for i in range(0,len(one_call_cat)):
-            log.debug(f"{one_call_cat[i]}, {one_call_stat[i]}")
-        parms = dict(category=one_call_cat, stat=one_call_stat, interval='1m', per_node=True, no_zeroes=True, show_internal=True)
+        for stat in one_call_stat:
+            log.debug(stat)
+        parms = dict(stat=one_call_stat, interval='1m', per_node=True, no_zeroes=True, show_internal=True)
         self.apicalls = dict(method="stats_show", parms=parms)
 
 
@@ -435,8 +432,8 @@ class WekaCollector(object):
         #for host, node in weka_maps["node-host"]:
         #log.debug(f"one_call_nids={json.dumps(one_call_nids, indent=2)}")
 
-        for i in range(0,len(self.apicalls['parms']['category'])):
-            log.debug(f"{self.apicalls['parms']['category'][i]}, {self.apicalls['parms']['stat'][i]}")
+        for stat in self.apicalls['parms']['stat']:
+            log.debug(stat)
 
         if self.backends_only:
             circular_host_list = circular_list(inputlist=list(cluster.host_dict.keys()))
@@ -446,11 +443,8 @@ class WekaCollector(object):
             newcmd = copy.deepcopy(self.apicalls)  # make sure to copy it
             newcmd["parms"]["node_ids"] = copy.deepcopy(one_call_nids[hostname])
             # set up newcmd
-            if not self.backends_only:
-                self.asyncobj.submit(hostname, newcmd['parms']['category'], newcmd['parms']['stat'], newcmd['method'], newcmd['parms'])
-            else:
-                self.asyncobj.submit(circular_host_list.next(), newcmd['parms']['category'], newcmd['parms']['stat'], newcmd['method'], newcmd['parms'])
-                pass
+            target = circular_host_list.next() if self.backends_only else hostname
+            self.asyncobj.submit(target, newcmd['method'], newcmd['parms'])
             self.api_stats['num_calls'] += 1
 
         # end new impl
