@@ -11,6 +11,7 @@ exporter:
   max_procs: 8
   max_threads_per_proc: 100
   backends_only: True
+  datapoints_per_collect: 5
 
 # cluster section - info about the weka cluster we want to export data from:
 cluster:

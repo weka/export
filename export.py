@@ -88,6 +88,9 @@ def prom_client(config):
     if 'backends_only' not in config['exporter']:
         config['exporter']['backends_only'] = False
 
+    if 'datapoints_per_collect' not in config['exporter']:
+        config['exporter']['datapoints_per_collect'] = 1
+
     log.info(f"Timeout set to {config['exporter']['timeout']} secs")
 
     try:
