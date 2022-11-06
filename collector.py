@@ -109,9 +109,11 @@ class WekaCollector(object):
         self.clusterdata = {}
         self.threaderror = False
         self.api_stats = {}
-        self.max_procs = config['exporter']['max_procs']
-        self.max_threads_per_proc = config['exporter']['max_threads_per_proc']
-        self.backends_only = config['exporter']['backends_only']
+        exporter = config['exporter']
+        self.max_procs = exporter['max_procs']
+        self.max_threads_per_proc = exporter['max_threads_per_proc']
+        self.backends_only = exporter['backends_only']
+        self.datapoints_per_collect = exporter['datapoints_per_collect']
         self.map_registry = config["map_registry"]
 
         self.cluster = cluster_obj
@@ -160,7 +162,7 @@ class WekaCollector(object):
 
         for stat in one_call_stat:
             log.debug(stat)
-        parms = dict(stat=one_call_stat, interval='1m', per_node=True, no_zeroes=True, show_internal=True)
+        parms = dict(stat=one_call_stat, interval=f'{self.datapoints_per_collect}m', per_node=True, no_zeroes=True, show_internal=True)
         self.apicalls = dict(method="stats_show", parms=parms)
 
 
