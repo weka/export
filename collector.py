@@ -349,7 +349,7 @@ class WekaCollector(object):
             raise
         except Exception as exc:
             log.error(f"Cluster refresh failed on cluster '{cluster}' - check connectivity ({exc})")
-            return
+            raise
 
         # set up async api calling subsystem
         self.asyncobj = Async(cluster, self.max_procs, self.max_threads_per_proc)
@@ -380,7 +380,7 @@ class WekaCollector(object):
             self.map_registry.register('node-role', host_role_map)
         except Exception as exc:
             log.error("error building maps. Aborting data gather from cluster {}".format(str(cluster)))
-            return
+            raise
 
         log.info(f"Cluster {cluster} Using {cluster.sizeof()} hosts")
 
@@ -506,9 +506,9 @@ class WekaCollector(object):
             metric_objs['wekainfo'].add_metric(labels=wekacluster.keys(), value=wekacluster)
 
             # log.info( "cluster name: " + wekadata["clusterinfo"]["name"] )
-        except:
+        except Exception as exc:
             log.error("error cluster info - aborting populate of cluster {}".format(str(cluster)))
-            return
+            raise
 
         log.debug(f"uptime cluster={cluster.name}")
         try:
