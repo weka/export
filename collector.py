@@ -113,7 +113,8 @@ class WekaCollector(object):
         self.max_procs = exporter['max_procs']
         self.max_threads_per_proc = exporter['max_threads_per_proc']
         self.backends_only = exporter['backends_only']
-        self.datapoints_per_collect = exporter['datapoints_per_collect']
+        if 'datapoints_per_collect' in exporter:
+            self.datapoints_per_collect = exporter['datapoints_per_collect']
         self.map_registry = config["map_registry"]
 
         self.cluster = cluster_obj
