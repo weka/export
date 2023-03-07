@@ -115,6 +115,8 @@ class WekaCollector(object):
         self.backends_only = exporter['backends_only']
         if 'datapoints_per_collect' in exporter:
             self.datapoints_per_collect = exporter['datapoints_per_collect']
+        else:
+            self.datapoints_per_collect = 1
         self.map_registry = config["map_registry"]
 
         self.cluster = cluster_obj
