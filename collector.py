@@ -438,7 +438,7 @@ class WekaCollector(object):
             log.debug(stat)
 
         if self.backends_only:
-            circular_host_list = circular_list(inputlist=list(cluster.host_dict.keys()))
+            circular_host_list = circular_list(inputlist=up_list)
 
         for hostname in up_list:
             import copy
