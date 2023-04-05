@@ -418,7 +418,11 @@ class WekaCollector(object):
         up_list = list()
         for host in wekadata['hostList']:
             if host['status'] == 'UP' and host['state'] == 'ACTIVE':
-                up_list.append(host['hostname'])
+                if self.backends_only:
+                    if host['mode'] == 'backend':
+                        up_list.append(host['hostname']) # add only backends
+                else:
+                    up_list.append(host['hostname'])  # add them all (clients too)
 
         log.debug(f"node_host_map ={node_host_map}")
         one_call_nids = dict()
