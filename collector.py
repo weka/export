@@ -420,6 +420,7 @@ class WekaCollector(object):
         }
 
         # new impl
+        # up_list is a list of all the good hosts (ie: not down)
         up_list = list()
         for host in wekadata['hostList']:
             if host['status'] == 'UP' and host['state'] == 'ACTIVE':
@@ -443,14 +444,16 @@ class WekaCollector(object):
         if self.backends_only:
             circular_host_list = circular_list(inputlist=up_list)
 
-        for hostname in up_list:
+        for hostname, nids in one_call_nids.items():
             import copy
-            newcmd = copy.deepcopy(self.apicalls)  # make sure to copy it
-            newcmd["parms"]["node_ids"] = copy.deepcopy(one_call_nids[hostname])
-            # set up newcmd
-            target = circular_host_list.next() if self.backends_only else hostname
-            self.asyncobj.submit(target, newcmd['method'], newcmd['parms'])
-            self.api_stats['num_calls'] += 1
+            # don't query for down hosts
+            if hostname in up_list:
+                newcmd = copy.deepcopy(self.apicalls)  # make sure to copy it
+                newcmd["parms"]["node_ids"] = copy.deepcopy(nids)
+                # set up newcmd
+                target = circular_host_list.next() if self.backends_only else hostname
+                self.asyncobj.submit(target, newcmd['method'], newcmd['parms'])
+                self.api_stats['num_calls'] += 1
 
         # end new impl
 
