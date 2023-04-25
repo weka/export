@@ -6,8 +6,6 @@
 
 
 import datetime
-import json
-import sys
 import time
 import traceback
 from logging import getLogger
@@ -426,7 +424,7 @@ class WekaCollector(object):
             if host['status'] == 'UP' and host['state'] == 'ACTIVE':
                 up_list.append(host['hostname'])
 
-        log.debug(f"node_host_map ={node_host_map}")
+        #log.debug(f"node_host_map ={node_host_map}")
         one_call_nids = dict()
         for node, hostname in node_host_map.items():
             nid = int(node.split('<')[1].split('>')[0])  # make nodeid numeric
@@ -715,7 +713,7 @@ class WekaCollector(object):
                 stat,
                 unit]
 
-            #log.debug(f"unit={unit}")
+            log.debug(f"unit={unit}")
             if (unit != 'sizes') and (unit != "Blocks"):
                 try:
                     metric_objs['weka_stats_gauge'].add_metric(labelvalues, value,
