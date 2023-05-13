@@ -371,10 +371,11 @@ class WekaCollector(object):
                 node_host_map[node["node_id"]] = node["hostname"]
                 node_role_map[node["node_id"]] = node["roles"]
             for host in wekadata["hostList"]:
-                if host["mode"] == "backend":
-                    host_role_map[host["hostname"]] = "server"
-                else:
-                    host_role_map[host["hostname"]] = "client"
+                if host['hostname'] not in host_role_map:   # there may be MCB, so might be there already
+                    if host["mode"] == "backend":
+                        host_role_map[host["hostname"]] = "server"
+                    else:
+                        host_role_map[host["hostname"]] = "client"
             # update the maps so they can be used in the loki module
             self.map_registry.register('node-host', node_host_map)
             self.map_registry.register('node-role', node_role_map)
@@ -421,7 +422,8 @@ class WekaCollector(object):
         # up_list is a list of all the good hosts (ie: not down)
         up_list = list()
         for host in wekadata['hostList']:
-            if host['status'] == 'UP' and host['state'] == 'ACTIVE':
+            if host['status'] == 'UP' and host['state'] == 'ACTIVE' and host['hostname'] not in up_list:
+                # could be MCB, so only add it not already in the list
                 up_list.append(host['hostname'])
 
         #log.debug(f"node_host_map ={node_host_map}")
