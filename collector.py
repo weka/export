@@ -421,10 +421,12 @@ class WekaCollector(object):
         # new impl
         # up_list is a list of all the good hosts (ie: not down)
         up_list = list()
+        backends_list = list()
         for host in wekadata['hostList']:
             if host['status'] == 'UP' and host['state'] == 'ACTIVE' and host['hostname'] not in up_list:
-                # could be MCB, so only add it not already in the list
                 up_list.append(host['hostname'])
+                if host['mode'] == 'backend':
+                    backends_list.append(host['hostname'])
 
         #log.debug(f"node_host_map ={node_host_map}")
         one_call_nids = dict()
@@ -441,8 +443,7 @@ class WekaCollector(object):
         for stat in self.apicalls['parms']['stat']:
             log.debug(stat)
 
-        if self.backends_only:
-            circular_host_list = circular_list(inputlist=up_list)
+        circular_host_list = circular_list(inputlist=backends_list)
 
         for hostname, nids in one_call_nids.items():
             import copy
@@ -451,11 +452,10 @@ class WekaCollector(object):
                 newcmd = copy.deepcopy(self.apicalls)  # make sure to copy it
                 newcmd["parms"]["node_ids"] = copy.deepcopy(nids)
                 # set up newcmd
+                # vince - not sure this is working as intended
                 target = circular_host_list.next() if self.backends_only else hostname
                 self.asyncobj.submit(target, newcmd['method'], newcmd['parms'])
                 self.api_stats['num_calls'] += 1
-
-        # end new impl
 
         log.debug("******************************** WAITING ON ASYNC PROCESS *************************************")
         stats_data = list()
@@ -463,6 +463,8 @@ class WekaCollector(object):
             if not result.exception:
                 #log.info(f"result={result}")
                 stats_data += result.result
+            else:
+                log.error(f'result has exception {result.exception}')
         log.debug("******************************** WAITING ON ASYNC PROCESS COMPLETE *************************************")
 
         elapsed = time.time() - start_time
