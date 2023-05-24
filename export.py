@@ -122,7 +122,8 @@ def prom_client(config):
     # create the WekaCollector object
     collector = WekaCollector(config, cluster_obj)
 
-    if config['exporter']['loki_host'] is not None:
+    loki_host = config['exporter'].get('loki_host')
+    if loki_host:
         try:
             lokiserver = LokiServer(config['exporter']['loki_host'], config['exporter']['loki_port'], maps)
         except:
