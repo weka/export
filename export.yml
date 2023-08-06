@@ -5,7 +5,7 @@
 # exporter section - info about how we're going to run
 exporter:
   listen_port: 8150
-  loki_host: 
+  loki_host: null
   loki_port: 3100
   timeout: 10.0
   max_procs: 8
@@ -18,7 +18,6 @@ cluster:
   auth_token_file: auth-token.json
   hosts:
     - vweka01
-    - vweka02
     - vweka03
   force_https: False   # only 3.10+ clusters support https
   verify_cert: False  # default cert cannot be verified
