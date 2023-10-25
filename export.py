@@ -146,7 +146,7 @@ def prom_client(config):
 
     while True:
         time.sleep(30)  # sleep first, just in case we're started at the same time as Loki; give it time
-        if lokiserver is not None:
+        if lokiserver is not None and len(lokiserver) != 0:
             collector.collect_logs(lokiserver)
 
 
