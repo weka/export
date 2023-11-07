@@ -123,9 +123,13 @@ def prom_client(config):
     collector = WekaCollector(config, cluster_obj)
 
     # is there a loki server set?
-    if config['exporter']['loki_host'] is not None and len(config['exporter']['loki_host']) != 0:
+    loki_host = config['exporter'].get('loki_host', None)
+    loki_port = config['exporter'].get('loki_port', 3100)
+
+    if loki_host is not None and len(loki_host) != 0:
+        log.info(f"loki_host set to {loki_host}")
         try:
-            lokiserver = LokiServer(config['exporter']['loki_host'], config['exporter']['loki_port'], maps)
+            lokiserver = LokiServer(loki_host, loki_port, maps)
         except:
             sys.exit(1)
     else:
@@ -146,7 +150,7 @@ def prom_client(config):
 
     while True:
         time.sleep(30)  # sleep first, just in case we're started at the same time as Loki; give it time
-        if lokiserver is not None and len(lokiserver) != 0:
+        if lokiserver is not None:
             collector.collect_logs(lokiserver)
 
 
