@@ -15,7 +15,6 @@ import sys
 import time
 import platform
 import traceback
-from multiprocessing import Process
 import yaml
 import socket
 
@@ -30,7 +29,7 @@ from lokilogs import LokiServer
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "1.6.9"
+VERSION = "1.6.10"
 
 #VERSION = "experimental"
 
@@ -83,6 +82,9 @@ def prom_client(config):
     if 'verify_cert' not in config['cluster']:
         config['cluster']['verify_cert'] = True
 
+    if 'mgmt_port' not in config['cluster']:
+        config['cluster']['mgmt_port'] = 14000
+
     if 'timeout' not in config['exporter']:
         config['exporter']['timeout'] = 10
 
@@ -99,7 +101,8 @@ def prom_client(config):
                                   force_https=config['cluster']['force_https'], 
                                   verify_cert=config['cluster']['verify_cert'], 
                                   backends_only=config['exporter']['backends_only'],
-                                  timeout=config['exporter']['timeout'])
+                                  timeout=config['exporter']['timeout'],
+                                  mgmt_port=config['cluster']['mgmt_port'])
     except wekalib.exceptions.HTTPError as exc:
         if exc.code == 403:
             log.critical(f"Cluster returned permission error - is the userid level ReadOnly or above?")
