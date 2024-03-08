@@ -68,8 +68,8 @@ class WekaCollector(object):
         "nodeList": dict(method="nodes_list", parms={}),
         "fs_stat": dict(method="filesystems_get_capacity", parms={}),
         "driveList": dict(method="disks_list", parms={"show_removed": False}),
-        "alerts": dict(method="alerts_list", parms={})
-        # "quotas": dict( method="directory_quota_list", parms={'fs_name','start_cookie'} )
+        "alerts": dict(method="alerts_list", parms={}),
+        "obs_capacity": dict(method="obs_capacities_list", parms={}),
     }
     CLUSTERSTATS = {
         'weka_overview_activity_ops': ['Weka IO Summary number of operations', ['cluster'], 'num_ops'],
@@ -211,6 +211,29 @@ class WekaCollector(object):
         metric_objs['drives'] = GaugeMetricFamily('weka_drives', 'Weka cluster drives',
                                                   labels=['cluster', 'host_name', 'host_id', 'node_id', 'drive_id',
                                                           'vendor', 'model', 'serial', 'size', 'status', 'life'])
+        # what's the value?   Used?  Total? Over threshold?
+        #metric_objs['obs_capacity'] = GaugeMetricFamily('weka_obj_capacity', 'Weka fs capacity',
+        #                                          labels=['cluster', 'fs_name', 'fsId', 'bucket_name', 'reclaimable_percent',
+        #                                                  'reclaimable_high_thresh', 'reclaimable_low_thresh',
+        #                                                  'reclaimable_thresh', 'total_consumed_cap', 'used_cap'])
+        metric_objs['fs_obs_total_consumed'] = GaugeMetricFamily('weka_fs_obj_total_consumed',
+                                                                          'Weka fs capacity total consumed',
+                                                  labels=['cluster', 'fs_name', 'fsId', 'bucket_name'])
+        metric_objs['fs_obs_cap_used'] = GaugeMetricFamily('weka_fs_obj_cap_used',
+                                                                  'Weka fs capacity used capacity',
+                                                  labels=['cluster', 'fs_name', 'fsId', 'bucket_name'])
+        metric_objs['fs_obs_cap_rec_percent'] = GaugeMetricFamily('weka_fs_obj_cap_rec_percent',
+                                                                  'Weka fs capacity reclaimable capacity',
+                                                                  labels=['cluster', 'fs_name', 'fsId', 'bucket_name'])
+        metric_objs['fs_obs_cap_rec_thresh'] = GaugeMetricFamily('weka_fs_obj_cap_rec_thresh',
+                                                                 'Weka fs capacity reclaimable threshold',
+                                                                 labels=['cluster', 'fs_name', 'fsId', 'bucket_name'])
+        metric_objs['fs_obs_cap_rec_low_thresh'] = GaugeMetricFamily('weka_fs_obj_cap_rec_low_thresh',
+                                                             'Weka fs capacity reclaimable low threshold',
+                                                                     labels=['cluster', 'fs_name', 'fsId', 'bucket_name'])
+        metric_objs['fs_obs_cap_rec_hi_thresh'] = GaugeMetricFamily('weka_fs_obj_cap_rec_hi_thresh',
+                                                          'Weka fs capacity reclaimable high threshold',
+                                                  labels=['cluster', 'fs_name', 'fsId', 'bucket_name'])
 
     def collect(self):
 
@@ -657,6 +680,27 @@ class WekaCollector(object):
 
         except:
             log.error(f"error processing DRIVES for cluster {cluster}")
+
+        #metric_objs['obs_capacity'] = GaugeMetricFamily('weka_obj_capacity', 'Weka fs capacity',
+        #                                          labels=['cluster', 'fs_name', 'fsId', 'bucket_name', 'reclaimable_percent',
+        #                                                  'reclaimable_high_thresh', 'reclaimable_low_thresh',
+        #                                                  'reclaimable_thresh', 'total_consumed_cap', 'used_cap'])
+        try:
+            for fs in wekadata["obs_capacity"]:
+                metric_objs['fs_obs_total_consumed'].add_metric([str(cluster), fs['filesystem_name'], fs['fsId'],
+                                                                 fs['obs_bucket_name']], fs['total_consumed_capacity'])
+                metric_objs['fs_obs_cap_used'].add_metric([str(cluster), fs['filesystem_name'], fs['fsId'],
+                                                           fs['obs_bucket_name']], fs['used_capacity'])
+                metric_objs['fs_obs_cap_rec_percent'].add_metric([str(cluster), fs['filesystem_name'], fs['fsId'],
+                                                                  fs['obs_bucket_name']], fs['reclaimable'])
+                metric_objs['fs_obs_cap_rec_thresh'].add_metric([str(cluster), fs['filesystem_name'], fs['fsId'],
+                                                                 fs['obs_bucket_name']], fs['reclaimable_threshold'])
+                metric_objs['fs_obs_cap_rec_low_thresh'].add_metric([str(cluster), fs['filesystem_name'], fs['fsId'],
+                                                                 fs['obs_bucket_name']], fs['reclaimable_low_threshold'])
+                metric_objs['fs_obs_cap_rec_hi_thresh'].add_metric([str(cluster), fs['filesystem_name'], fs['fsId'],
+                                                                    fs['obs_bucket_name']], fs['reclaimable_high_threshold'])
+        except Exception as exc:
+            log.error(f"error processing obs_capacity for cluster {cluster}:{exc}")
 
         # get all the IO stats...
         #            ['cluster','host_name','host_role','node_id','node_role','category','stat','unit']
