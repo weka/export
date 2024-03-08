@@ -761,7 +761,7 @@ class WekaCollector(object):
                 stat,
                 unit]
 
-            log.debug(f"unit={unit}")
+            #log.debug(f"unit={unit}")
             if (unit != 'sizes') and (unit != "Blocks"):
                 try:
                     metric_objs['weka_stats_gauge'].add_metric(labelvalues, value,
