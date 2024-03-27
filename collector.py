@@ -159,8 +159,8 @@ class WekaCollector(object):
                 self.wekaIOCommands[category] = dict(method="stats_show", parms=parms)
         """
 
-        for stat in one_call_stat:
-            log.debug(stat)
+        #for stat in one_call_stat:
+        #    log.debug(stat)
         parms = dict(stat=one_call_stat, interval=f'{self.datapoints_per_collect}m', per_node=True, no_zeroes=True,
                      show_internal=True)
         self.apicalls = dict(method="stats_show", parms=parms)
@@ -463,8 +463,8 @@ class WekaCollector(object):
         # for host, node in weka_maps["node-host"]:
         # log.debug(f"one_call_nids={json.dumps(one_call_nids, indent=2)}")
 
-        for stat in self.apicalls['parms']['stat']:
-            log.debug(stat)
+        #for stat in self.apicalls['parms']['stat']:
+        #    log.debug(stat)
 
         circular_host_list = circular_list(inputlist=backends_list)
 
