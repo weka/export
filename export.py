@@ -29,7 +29,7 @@ from lokilogs import LokiServer
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "1.6.10"
+VERSION = "1.7.1"
 
 #VERSION = "experimental"
 
@@ -116,7 +116,7 @@ def prom_client(config):
         return
     except Exception as exc:
         log.critical(f"Unable to create Weka Cluster: {exc}")
-        log.critical(traceback.format_exc())
+        #log.critical(traceback.format_exc())
         return
 
     maps = MapRegistry()

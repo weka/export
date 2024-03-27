@@ -17,10 +17,10 @@ exporter:
 cluster:
   auth_token_file: auth-token.json
   hosts:
-    - 172.29.0.63
+    - 172.29.4.65
   force_https: False   # only 3.10+ clusters support https
   verify_cert: False  # default cert cannot be verified
-  mgmt_port: 14300
+  mgmt_port: 14000
 
   # auth_token_file can be an absolute path, relative path, or filename.  
   #   If just a filename it will be searched for in ".", "~/.weka", and "./.weka"
@@ -53,7 +53,7 @@ cluster:
 
 stats:
   cpu:     # Category
-     CPU_UTILIZATION: percent'    # metric
+     CPU_UTILIZATION: "%"    # metric
 #  object_storage:     # Category
 #    FAILED_OBJECT_DELETES: count
 #    FAILED_OBJECT_DOWNLOADS: count
@@ -130,7 +130,7 @@ stats:
 #    READLINK_OPS: ops
     READS: iops
     READ_BYTES: bytespersec
-#    READ_DURATION: microsecs
+    READ_DURATION: microsecs
     READ_LATENCY: microsecs
 #    REMOVE_LATENCY: microsecs
     REMOVE_OPS: ops
