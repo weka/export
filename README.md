@@ -1,8 +1,15 @@
-# Weka Metrics Exporter
+# WEKA Metrics Exporter
 
-A Prometheus Metrics exporter for WekaFS. Gathers metrics and statistics from Weka Clusters and exposes a metrics endpoint for Prometheus to scrape.
+A Prometheus Metrics exporter for WEKA. Gathers metrics and statistics from WEKA Clusters and exposes a metrics endpoint for Prometheus to scrape.
 
-Full Weka documentation is on http://docs.weka.io
+Full WEKA documentation is on http://docs.weka.io
+
+Version 1.7.1
+Removed support for clusters < v4.0.0 to improve reliability and performance.
+
+Version 1.6.11
+1.6.x is now a divergent branch that supports WEKA clusters < 4.0.0 (ie: 3.x clusters).   Use the 1.7.x and above for clusters >= v4.0.0
+Older clusters do not support `obs_capacity` API call, which causes a failure.   Corrected to ignore the error.   Error was introduced in v1.6.10
 
 Version 1.3.0:
 Added additional scaling properties.  These are controlled with the `max_procs:` and  `max_threads_per_proc:` parameters in the `exporter:` section of the config file.   Up to max_procs subprocesses will be spawned to help scale api load, each with up to max_threads_per_proc threads.   The defaults should work for most clusters, as it will only spawn 1 process for each max_threads_per_proc hosts in the cluster.  For example, if you have 80 weka servers and 200 clients, and max_threads_per_proc is the default 100, it would spawn 3 processes (280 total hosts / 100 threads, rounded up).   One can increase the number of processes used (up to max_procs) by lowering max_threads_per_proc.  For example, the same 280 total hosts with max_threads_per_proc=50 would spawn 6 processes (280 total hosts / 50 threads, rounded up).
@@ -25,7 +32,7 @@ Version 1.1.0:
 
 Goodbye command-line args, goodbye ClusterSpecs!   This new version has all the configuration in the export.yml file!
 
-With this new version, you'll have to run another instance for each Weka Cluster you have, rather than having one instance do all your clusters.   In practice, most customers either have only one cluster, or run multiple instances of export anyway, and handling more than one added a lot of complexity.  We've reduced the command-line args, but you can still override the configuration file name and set verbosity levels.
+With this new version, you'll have to run another instance for each WEKA Cluster you have, rather than having one instance do all your clusters.   In practice, most customers either have only one cluster, or run multiple instances of export anyway, and handling more than one added a lot of complexity.  We've reduced the command-line args, but you can still override the configuration file name and set verbosity levels.
 
 Some new sections have been added to the .yml file as a result of this:
 
@@ -52,9 +59,9 @@ cluster:
 
 The `exporter` section describes global settings for the export program itself, such as what port to listen on and where to find grafana/loki.
 
-The `cluster` section describes the target weka cluster.   Note that with Weka v3.11.x, the auth-token.json file is required, due to us tightening security of the product.  The 'hosts' key is a list of hostnames or ip addresses.  You must specify at least one, and we recommend two or more.  There is no need to list all of the hosts in the Weka Cluster.
+The `cluster` section describes the target WEKA cluster.   Note that with WEKA v3.11.x, the auth-token.json file is required, due to us tightening security of the product.  The 'hosts' key is a list of hostnames or ip addresses.  You must specify at least one, and we recommend two or more.  There is no need to list all of the hosts in the WEKA Cluster.
 
-We highly recommend using the pre-compiled binary (in a tarball under Releases on this page - https://github.com/weka/export/releases), or the Docker Container, available on Docker Hub as `wekasolutions/export`, or better yet, use with the docker-compose configuration that is part of Weka-Mon (http://github.com/weka/weka-mon).
+We highly recommend using the pre-compiled binary (in a tarball under Releases on this page - https://github.com/weka/export/releases), or the Docker Container, available on Docker Hub as `wekasolutions/export`, or better yet, use with the docker-compose configuration that is part of WEKAmon (http://github.com/weka/weka-mon).
 
 
 
@@ -69,7 +76,7 @@ Version 1.0.0:
 ## What's new
 
 Largely re-written and modularized. New Repo, resetting version to 1.0.0
-Now using the weka api to talk to the cluster(s), rather than spawning weka commands.     
+Now using the WEKA api to talk to the cluster(s), rather than spawning weka commands.     
 Improved logging and new verbosity levels.    
 It can now gather metrics from multiple clusters     
 Changed command-line arguments, particularly cluster specification (see below - removed -H option)     
