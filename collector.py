@@ -380,8 +380,11 @@ class WekaCollector(object):
 
         # get info from weka cluster - these are quick calls
         for stat, command in self.WEKAINFO.items():
-            wekadata[stat] = cluster.call_api(command['method'], command['parms'])
-            self.api_stats['num_calls'] += 1
+            try:
+                wekadata[stat] = cluster.call_api(command['method'], command['parms'])
+                self.api_stats['num_calls'] += 1
+            except Exception as exc:
+                log.error(f"Error calling method {command['method']}: {exc}")
 
         # clear old maps, if any - if nodes come/go this can get funky with old data, so re-create it every time
         node_host_map = dict()
