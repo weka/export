@@ -12,12 +12,14 @@ exporter:
   max_threads_per_proc: 100
   backends_only: True
   datapoints_per_collect: 5
+  certfile: null
+  keyfile: null
 
 # cluster section - info about the weka cluster we want to export data from:
 cluster:
   auth_token_file: auth-token.json
   hosts:
-    - 172.29.4.65
+    - 172.29.0.63
   force_https: False   # only 3.10+ clusters support https
   verify_cert: False  # default cert cannot be verified
   mgmt_port: 14000
