@@ -29,7 +29,7 @@ from lokilogs import LokiServer
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "1.7.1"
+VERSION = "1.7.2"
 
 #VERSION = "experimental"
 
@@ -94,6 +94,12 @@ def prom_client(config):
     if 'datapoints_per_collect' not in config['exporter']:
         config['exporter']['datapoints_per_collect'] = 1
 
+    if 'certfile' not in config['exporter']:
+        config['exporter']['certfile'] = None
+
+    if 'keyfile' not in config['exporter']:
+        config['exporter']['keyfile'] = None
+
     log.info(f"Timeout set to {config['exporter']['timeout']} secs")
 
     try:
@@ -143,7 +149,12 @@ def prom_client(config):
     #
     log.info(f"starting http server on port {config['exporter']['listen_port']}")
     try:
-        prometheus_client.start_http_server(int(config['exporter']['listen_port']))
+        if config['exporter']['certfile'] is not None and config['exporter']['keyfile'] is not None:
+            prometheus_client.start_http_server(int(config['exporter']['listen_port']),
+                                                certfile=config['exporter']['certfile'],
+                                                keyfile=config['exporter']['keyfile'])
+        else:
+            prometheus_client.start_http_server(int(config['exporter']['listen_port']))
     except Exception as exc:
         log.critical(f"Unable to start http server on port {config['exporter']['listen_port']}: {exc}")
         return 1
