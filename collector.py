@@ -379,8 +379,12 @@ class WekaCollector(object):
 
         # get info from weka cluster - these are quick calls
         for stat, command in self.WEKAINFO.items():
-            wekadata[stat] = cluster.call_api(command['method'], command['parms'])
-            self.api_stats['num_calls'] += 1
+            try:
+                wekadata[stat] = cluster.call_api(command['method'], command['parms'])
+                self.api_stats['num_calls'] += 1
+            except Exception as exc:
+                log.error(f"error getting {stat} from cluster {cluster}: {exc}")
+                # decision - if we can't get the basic info, we can't get anything else, so abort?
 
         # clear old maps, if any - if nodes come/go this can get funky with old data, so re-create it every time
         node_host_map = dict()
@@ -404,7 +408,7 @@ class WekaCollector(object):
             self.map_registry.register('node-role', node_role_map)
             self.map_registry.register('node-role', host_role_map)
         except Exception as exc:
-            log.error("error building maps. Aborting data gather from cluster {}".format(str(cluster)))
+            log.error(f"error building maps: {exc}: Aborting data gather from cluster {str(cluster)}")
             raise
 
         log.info(f"Cluster {cluster} Using {cluster.sizeof()} hosts")
@@ -649,8 +653,8 @@ class WekaCollector(object):
                             drive_id = params['drive_id']
                     labelvalues = [str(cluster), alert['type'], alert['title'], host_name, host_id, node_id, drive_id]
                     metric_objs['alerts'].add_metric(labelvalues, 1.0)
-        except:
-            log.error("error processing alerts for cluster {}".format(str(cluster)))
+        except Exception as exc:
+            log.error(f"error {exc} processing alerts for cluster {str(cluster)}")
 
         try:
             for disk_id, drive in wekadata["driveList"].items():
