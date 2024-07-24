@@ -585,14 +585,19 @@ class WekaCollector(object):
             metric_objs['weka_drive_storage_unprovisioned_bytes'].add_metric([str(cluster)],
                                                                              wekadata["clusterinfo"]["capacity"][
                                                                                  "unprovisioned_bytes"])
+            # this changed after WEKAPP-363037
+            if 'servers' in wekadata["clusterinfo"]:
+                stanza = "servers"
+            else:
+                stanza = "hosts"
             metric_objs['weka_num_servers_active'].add_metric([str(cluster)],
-                                                              wekadata["clusterinfo"]["hosts"]["backends"]["active"])
+                                                              wekadata["clusterinfo"][stanza]["backends"]["active"])
             metric_objs['weka_num_servers_total'].add_metric([str(cluster)],
-                                                             wekadata["clusterinfo"]["hosts"]["backends"]["total"])
+                                                             wekadata["clusterinfo"][stanza]["backends"]["total"])
             metric_objs['weka_num_clients_active'].add_metric([str(cluster)],
-                                                              wekadata["clusterinfo"]["hosts"]["clients"]["active"])
+                                                             wekadata["clusterinfo"][stanza]["clients"]["active"])
             metric_objs['weka_num_clients_total'].add_metric([str(cluster)],
-                                                             wekadata["clusterinfo"]["hosts"]["clients"]["total"])
+                                                             wekadata["clusterinfo"][stanza]["clients"]["total"])
             metric_objs['weka_num_drives_active'].add_metric([str(cluster)],
                                                              wekadata["clusterinfo"]["drives"]["active"])
             metric_objs['weka_num_drives_total'].add_metric([str(cluster)], wekadata["clusterinfo"]["drives"]["total"])
