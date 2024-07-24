@@ -29,7 +29,7 @@ from lokilogs import LokiServer
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "1.7.2"
+VERSION = "1.7.3"
 
 #VERSION = "experimental"
 
