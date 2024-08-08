@@ -29,7 +29,7 @@ from lokilogs import LokiServer
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "1.7.3"
+VERSION = "1.7.4"
 
 #VERSION = "experimental"
 
@@ -134,6 +134,7 @@ def prom_client(config):
     # is there a loki server set?
     loki_host = config['exporter'].get('loki_host', None)
     loki_port = config['exporter'].get('loki_port', 3100)
+    loki_only = config['exporter'].get('loki_only', False)
 
     if loki_host is not None and len(loki_host) != 0:
         log.info(f"loki_host set to {loki_host}")
@@ -144,23 +145,28 @@ def prom_client(config):
     else:
         lokiserver = None
 
+    if loki_only and lokiserver is None:
+        log.critical("loki_only set, but no Loki server defined in config file")
+        sys.exit(1)
+
     #
     # Start up the server to expose the metrics.
     #
-    log.info(f"starting http server on port {config['exporter']['listen_port']}")
-    try:
-        if config['exporter']['certfile'] is not None and config['exporter']['keyfile'] is not None:
-            prometheus_client.start_http_server(int(config['exporter']['listen_port']),
-                                                certfile=config['exporter']['certfile'],
-                                                keyfile=config['exporter']['keyfile'])
-        else:
-            prometheus_client.start_http_server(int(config['exporter']['listen_port']))
-    except Exception as exc:
-        log.critical(f"Unable to start http server on port {config['exporter']['listen_port']}: {exc}")
-        return 1
+    if not loki_only:
+        log.info(f"starting http server on port {config['exporter']['listen_port']}")
+        try:
+            if config['exporter']['certfile'] is not None and config['exporter']['keyfile'] is not None:
+                prometheus_client.start_http_server(int(config['exporter']['listen_port']),
+                                                    certfile=config['exporter']['certfile'],
+                                                    keyfile=config['exporter']['keyfile'])
+            else:
+                prometheus_client.start_http_server(int(config['exporter']['listen_port']))
+        except Exception as exc:
+            log.critical(f"Unable to start http server on port {config['exporter']['listen_port']}: {exc}")
+            return 1
 
-    # register our custom collector
-    prometheus_client.REGISTRY.register(collector)
+        # register our custom collector
+        prometheus_client.REGISTRY.register(collector)
 
     while True:
         time.sleep(30)  # sleep first, just in case we're started at the same time as Loki; give it time

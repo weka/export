@@ -5,8 +5,9 @@
 # exporter section - info about how we're going to run
 exporter:
   listen_port: 8150
-  loki_host: null
+  loki_host: wms
   loki_port: 3100
+  loki_only: True
   timeout: 10.0
   max_procs: 8
   max_threads_per_proc: 100
@@ -19,7 +20,7 @@ exporter:
 cluster:
   auth_token_file: auth-token.json
   hosts:
-    - 172.29.0.63
+    - 172.29.0.64
   force_https: False   # only 3.10+ clusters support https
   verify_cert: False  # default cert cannot be verified
   mgmt_port: 14000
