@@ -92,10 +92,19 @@ class LokiServer(object):
         # end loki_logevent
 
     # format the events and send them up to Loki
-    def send_events(self, event_dict, cluster):
-
+    def send_events(self, event_dict, cluster, collector):
+        MINS = 60
         num_successful = 0
+        if self.registry.lookup('node-host') is None or self.registry.get_age('node-host') > 5 * MINS:
+            log.info(f"node-host map not populated... populating")
+            collector.create_maps()
+            log.info(f"node-host map populated.")
+
         node_host_map = self.registry.lookup('node-host')
+        if node_host_map is None:
+            log.error(f"Unable to populate node-host map: {exc}")
+
+        log.debug(f"node-host map age: {round(self.registry.get_age('node-host'),1)} seconds")
 
         if len(event_dict) == 0:
             log.debug("No events to send")

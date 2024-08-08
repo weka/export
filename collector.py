@@ -106,7 +106,7 @@ class WekaCollector(object):
         self.collect_time = None
         self.clusterdata = {}
         self.threaderror = False
-        self.api_stats = {}
+        self.api_stats = {'num_calls': 0}
         exporter = config['exporter']
         self.max_procs = exporter['max_procs']
         self.max_threads_per_proc = exporter['max_threads_per_proc']
@@ -347,6 +347,43 @@ class WekaCollector(object):
                     else:
                         self.clusterdata[str(cluster)][stat] += result.result
 
+    def create_maps(self):
+        self.wekadata = dict()
+        # get info from weka cluster - these are quick calls
+        for stat, command in self.WEKAINFO.items():
+            try:
+                self.wekadata[stat] = self.cluster.call_api(command['method'], command['parms'])
+                self.api_stats['num_calls'] += 1
+            except Exception as exc:
+                log.error(f"error getting {stat} from cluster {cluster}: {exc}")
+                # decision - if we can't get the basic info, we can't get anything else, so abort?
+
+        # clear old maps, if any - if nodes come/go this can get funky with old data, so re-create it every time
+        node_host_map = dict()
+        node_role_map = dict()
+        host_role_map = dict()
+
+        # populate maps
+        try:
+            for node_id, node in self.wekadata["nodeList"].items():
+                node_host_map[node_id] = node["hostname"]
+                node_role_map[node_id] = node["roles"]
+                # node["node_id"] = node_id   # this used to be inside here...
+            for host in self.wekadata["hostList"].values():  # node is a dict of node attribute
+                if host['hostname'] not in host_role_map:  # there may be MCB, so might be there already
+                    if host["mode"] == "backend":
+                        host_role_map[host["hostname"]] = "server"
+                    else:
+                        host_role_map[host["hostname"]] = "client"
+            # update the maps so they can be used in the loki module
+            self.map_registry.register('node-host', node_host_map)
+            self.map_registry.register('node-role', node_role_map)
+            self.map_registry.register('host-role', host_role_map)
+        except Exception as exc:
+            log.error(f"error building maps: {exc}: Aborting data gather from cluster {str(cluster)}")
+            raise
+
+
     #
     # gather() gets fresh stats from the cluster as they update
     #       populates all datastructures with fresh data
@@ -360,9 +397,9 @@ class WekaCollector(object):
         start_time = time.time()
         log.info("gathering weka data from cluster {}".format(str(cluster)))
 
-        # re-initialize wekadata so changes in the cluster don't leave behind strange things (hosts/nodes that no longer exist, etc)
-        wekadata = {}
-        self.clusterdata[str(cluster)] = wekadata  # clear out old data
+        # re-initialize self.wekadata so changes in the cluster don't leave behind strange things (hosts/nodes that no longer exist, etc)
+        #self.wekadata = {}
+        self.clusterdata[str(cluster)] = dict()
 
         # reset the cluster config to be sure we can talk to all the hosts
         try:
@@ -377,39 +414,14 @@ class WekaCollector(object):
         # set up async api calling subsystem
         self.asyncobj = Async(cluster, self.max_procs, self.max_threads_per_proc)
 
-        # get info from weka cluster - these are quick calls
-        for stat, command in self.WEKAINFO.items():
-            try:
-                wekadata[stat] = cluster.call_api(command['method'], command['parms'])
-                self.api_stats['num_calls'] += 1
-            except Exception as exc:
-                log.error(f"error getting {stat} from cluster {cluster}: {exc}")
-                # decision - if we can't get the basic info, we can't get anything else, so abort?
-
-        # clear old maps, if any - if nodes come/go this can get funky with old data, so re-create it every time
-        node_host_map = dict()
-        node_role_map = dict()
-        host_role_map = dict()
-
-        # populate maps
         try:
-            for node_id, node in wekadata["nodeList"].items():
-                node_host_map[node_id] = node["hostname"]
-                node_role_map[node_id] = node["roles"]
-                # node["node_id"] = node_id   # this used to be inside here...
-            for host in wekadata["hostList"].values():  # node is a dict of node attribute
-                if host['hostname'] not in host_role_map:  # there may be MCB, so might be there already
-                    if host["mode"] == "backend":
-                        host_role_map[host["hostname"]] = "server"
-                    else:
-                        host_role_map[host["hostname"]] = "client"
-            # update the maps so they can be used in the loki module
-            self.map_registry.register('node-host', node_host_map)
-            self.map_registry.register('node-role', node_role_map)
-            self.map_registry.register('node-role', host_role_map)
+            self.create_maps()
         except Exception as exc:
-            log.error(f"error building maps: {exc}: Aborting data gather from cluster {str(cluster)}")
-            raise
+            log.error(f"error creating maps: {exc}")
+            return
+        node_host_map = self.map_registry.lookup('node-host')
+        node_role_map = self.map_registry.lookup('node-role')
+        host_role_map = self.map_registry.lookup('host-role')
 
         log.info(f"Cluster {cluster} Using {cluster.sizeof()} hosts")
 
@@ -449,7 +461,7 @@ class WekaCollector(object):
         # up_list is a list of all the good hosts (ie: not down)
         up_list = list()
         backends_list = list()
-        for host in wekadata['hostList'].values():
+        for host in self.wekadata['hostList'].values():
             if host['status'] == 'UP' and host['state'] == 'ACTIVE' and host['hostname'] not in up_list:
                 up_list.append(host['hostname'])
                 if host['mode'] == 'backend':
@@ -506,9 +518,9 @@ class WekaCollector(object):
         log.info("populating datastructures for cluster {}".format(str(cluster)))
         try:
             # determine Cloud Status 
-            if wekadata["clusterinfo"]["cloud"]["healthy"]:
+            if self.wekadata["clusterinfo"]["cloud"]["healthy"]:
                 cloudStatus = "Healthy"  # must be enabled to be healthy
-            elif wekadata["clusterinfo"]["cloud"]["enabled"]:
+            elif self.wekadata["clusterinfo"]["cloud"]["enabled"]:
                 cloudStatus = "Unhealthy"  # enabled, but unhealthy
             else:
                 cloudStatus = "Disabled"  # disabled, healthy is meaningless
@@ -523,25 +535,25 @@ class WekaCollector(object):
         log.debug(f"weka_info Gauge cluster={cluster.name}")
         try:
             # Weka status indicator
-            if (wekadata["clusterinfo"]["buckets"]["active"] == wekadata["clusterinfo"]["buckets"]["total"] and
-                    wekadata["clusterinfo"]["drives"]["active"] == wekadata["clusterinfo"]["drives"]["total"] and
-                    wekadata["clusterinfo"]["io_nodes"]["active"] == wekadata["clusterinfo"]["io_nodes"]["total"] and
-                    wekadata["clusterinfo"]["hosts"]["backends"]["active"] ==
-                    wekadata["clusterinfo"]["hosts"]["backends"]["total"]):
+            if (self.wekadata["clusterinfo"]["buckets"]["active"] == self.wekadata["clusterinfo"]["buckets"]["total"] and
+                    self.wekadata["clusterinfo"]["drives"]["active"] == self.wekadata["clusterinfo"]["drives"]["total"] and
+                    self.wekadata["clusterinfo"]["io_nodes"]["active"] == self.wekadata["clusterinfo"]["io_nodes"]["total"] and
+                    self.wekadata["clusterinfo"]["hosts"]["backends"]["active"] ==
+                    self.wekadata["clusterinfo"]["hosts"]["backends"]["total"]):
                 WekaClusterStatus = "OK"
             else:
                 WekaClusterStatus = "WARN"
 
             # Basic info
-            cluster.release = wekadata["clusterinfo"]["release"]  # keep this up to date
-            wekacluster = {"cluster": str(cluster), "version": wekadata["clusterinfo"]["release"],
-                           "cloud_status": cloudStatus, "license_status": wekadata["clusterinfo"]["licensing"]["mode"],
-                           "io_status": wekadata["clusterinfo"]["io_status"],
-                           "link_layer": wekadata["clusterinfo"]["net"]["link_layer"], "status": WekaClusterStatus}
+            cluster.release = self.wekadata["clusterinfo"]["release"]  # keep this up to date
+            wekacluster = {"cluster": str(cluster), "version": self.wekadata["clusterinfo"]["release"],
+                           "cloud_status": cloudStatus, "license_status": self.wekadata["clusterinfo"]["licensing"]["mode"],
+                           "io_status": self.wekadata["clusterinfo"]["io_status"],
+                           "link_layer": self.wekadata["clusterinfo"]["net"]["link_layer"], "status": WekaClusterStatus}
 
             metric_objs['wekainfo'].add_metric(labels=wekacluster.keys(), value=wekacluster)
 
-            # log.info( "cluster name: " + wekadata["clusterinfo"]["name"] )
+            # log.info( "cluster name: " + self.wekadata["clusterinfo"]["name"] )
         except Exception as exc:
             log.error("error cluster info - aborting populate of cluster {}".format(str(cluster)))
             raise
@@ -550,8 +562,8 @@ class WekaCollector(object):
         try:
             # Uptime
             # not sure why, but sometimes this would fail... trim off the microseconds, because we really don't care 
-            cluster_time = self._trim_time(wekadata["clusterinfo"]["time"]["cluster_time"])
-            cluster_start_time = self._trim_time(wekadata["clusterinfo"]["io_status_changed_time"])
+            cluster_time = self._trim_time(self.wekadata["clusterinfo"]["time"]["cluster_time"])
+            cluster_start_time = self._trim_time(self.wekadata["clusterinfo"]["io_status_changed_time"])
             now_obj = datetime.datetime.strptime(cluster_time, "%Y-%m-%dT%H:%M:%S")
             dt_obj = datetime.datetime.strptime(cluster_start_time, "%Y-%m-%dT%H:%M:%S")
             uptime = now_obj - dt_obj
@@ -568,7 +580,7 @@ class WekaCollector(object):
             #       e: weka_overview_activity_num_ops instead of weka_overview_activity_ops
             for name, parms in self.CLUSTERSTATS.items():
                 metric_objs["cluster_stat_" + name].add_metric([str(cluster)],
-                                                               wekadata["clusterinfo"]["activity"][parms[2]])
+                                                               self.wekadata["clusterinfo"]["activity"][parms[2]])
 
         except:
             # track = traceback.format_exc()
@@ -577,37 +589,37 @@ class WekaCollector(object):
 
         log.debug(f"server overview cluster={cluster.name}")
         try:
-            metric_objs['weka_host_spares'].add_metric([str(cluster)], wekadata["clusterinfo"]["hot_spare"])
+            metric_objs['weka_host_spares'].add_metric([str(cluster)], self.wekadata["clusterinfo"]["hot_spare"])
             metric_objs['weka_host_spares_bytes'].add_metric([str(cluster)],
-                                                             wekadata["clusterinfo"]["capacity"]["hot_spare_bytes"])
+                                                             self.wekadata["clusterinfo"]["capacity"]["hot_spare_bytes"])
             metric_objs['weka_drive_storage_total_bytes'].add_metric([str(cluster)],
-                                                                     wekadata["clusterinfo"]["capacity"]["total_bytes"])
+                                                                     self.wekadata["clusterinfo"]["capacity"]["total_bytes"])
             metric_objs['weka_drive_storage_unprovisioned_bytes'].add_metric([str(cluster)],
-                                                                             wekadata["clusterinfo"]["capacity"][
+                                                                             self.wekadata["clusterinfo"]["capacity"][
                                                                                  "unprovisioned_bytes"])
             # this changed after WEKAPP-363037
-            if 'servers' in wekadata["clusterinfo"]:
+            if 'servers' in self.wekadata["clusterinfo"]:
                 stanza = "servers"
             else:
                 stanza = "hosts"
             metric_objs['weka_num_servers_active'].add_metric([str(cluster)],
-                                                              wekadata["clusterinfo"][stanza]["backends"]["active"])
+                                                              self.wekadata["clusterinfo"][stanza]["backends"]["active"])
             metric_objs['weka_num_servers_total'].add_metric([str(cluster)],
-                                                             wekadata["clusterinfo"][stanza]["backends"]["total"])
+                                                             self.wekadata["clusterinfo"][stanza]["backends"]["total"])
             metric_objs['weka_num_clients_active'].add_metric([str(cluster)],
-                                                             wekadata["clusterinfo"][stanza]["clients"]["active"])
+                                                             self.wekadata["clusterinfo"][stanza]["clients"]["active"])
             metric_objs['weka_num_clients_total'].add_metric([str(cluster)],
-                                                             wekadata["clusterinfo"][stanza]["clients"]["total"])
+                                                             self.wekadata["clusterinfo"][stanza]["clients"]["total"])
             metric_objs['weka_num_drives_active'].add_metric([str(cluster)],
-                                                             wekadata["clusterinfo"]["drives"]["active"])
-            metric_objs['weka_num_drives_total'].add_metric([str(cluster)], wekadata["clusterinfo"]["drives"]["total"])
+                                                             self.wekadata["clusterinfo"]["drives"]["active"])
+            metric_objs['weka_num_drives_total'].add_metric([str(cluster)], self.wekadata["clusterinfo"]["drives"]["total"])
         except:
             log.error("error processing server overview for cluster {}".format(str(cluster)))
 
         log.debug(f"protection status cluster={cluster.name}")
         try:
             # protection status
-            rebuildStatus = wekadata["clusterinfo"]["rebuild"]
+            rebuildStatus = self.wekadata["clusterinfo"]["rebuild"]
             protectionStateList = rebuildStatus["protectionState"]
             numStates = len(protectionStateList)  # 3 (0,1,2) for 2 parity), or 5 (0,1,2,3,4 for 4 parity)
 
@@ -625,7 +637,7 @@ class WekaCollector(object):
         log.debug(f"filesystems cluster={cluster.name}")
         try:
             # Filesystem stats
-            for fs_id, fs in wekadata["fs_stat"].items():
+            for fs_id, fs in self.wekadata["fs_stat"].items():
                 fs['total_percent_used'] = float(fs["used_total"]) / float(fs["available_total"]) * 100
                 fs['ssd_percent_used'] = float(fs["used_ssd"]) / float(fs["available_ssd"]) * 100
 
@@ -638,7 +650,7 @@ class WekaCollector(object):
 
         log.debug(f"alerts cluster={cluster.name}")
         try:
-            for alert in wekadata["alerts"]:
+            for alert in self.wekadata["alerts"]:
                 if not alert["muted"]:
                     log.debug(f"alert detected {alert['type']}")
                     host_name = "None"
@@ -662,7 +674,7 @@ class WekaCollector(object):
             log.error(f"error {exc} processing alerts for cluster {str(cluster)}")
 
         try:
-            for disk_id, drive in wekadata["driveList"].items():
+            for disk_id, drive in self.wekadata["driveList"].items():
                 # removed drives can have null values - prom client code hates that!
                 if drive['hostname'] is None or len(drive['hostname']) == 0:
                     drive['hostname'] = "None"
@@ -697,7 +709,7 @@ class WekaCollector(object):
         #                                                  'reclaimable_high_thresh', 'reclaimable_low_thresh',
         #                                                  'reclaimable_thresh', 'total_consumed_cap', 'used_cap'])
         try:
-            for fs in wekadata["obs_capacity"]:
+            for fs in self.wekadata["obs_capacity"]:
                 metric_objs['fs_obs_total_consumed'].add_metric([str(cluster), fs['filesystem_name'], fs['fsId'],
                                                                  fs['obs_bucket_name']], fs['total_consumed_capacity'])
                 metric_objs['fs_obs_cap_used'].add_metric([str(cluster), fs['filesystem_name'], fs['fsId'],
@@ -816,7 +828,7 @@ class WekaCollector(object):
             return
 
         try:
-            lokiserver.send_events(events, self.cluster)
+            lokiserver.send_events(events, self.cluster, self)
         except Exception as exc:
             log.critical(f"Error sending events: {exc} for cluster {self.cluster}")
             # log.critical(f"{traceback.format_exc()}")

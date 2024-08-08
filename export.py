@@ -171,6 +171,8 @@ def prom_client(config):
     while True:
         time.sleep(30)  # sleep first, just in case we're started at the same time as Loki; give it time
         if lokiserver is not None:
+            if loki_only:
+                log.info(f"running in Loki-only mode")
             collector.collect_logs(lokiserver)
 
 
