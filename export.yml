@@ -25,12 +25,12 @@ cluster:
   verify_cert: False  # default cert cannot be verified
   mgmt_port: 14000
 
-  # auth_token_file can be an absolute path, relative path, or filename.  
+  # auth_token_file must be a filename.
   #   If just a filename it will be searched for in ".", "~/.weka", and "./.weka"
   #   This file can be generated with the 'weka user login' command and copied to where we are running
-  # hosts is a list of hostnames or ip addresses.  Minimum of 1 requred.  You do not need to list all hosts in the cluster
+  # hosts is a list of hostnames or ip addresses.  Minimum of 1 required.  You do not need to list all hosts in the cluster
 
-# This file comes pre-set to pupulate the Grafana Panels that we've provided
+# This file comes pre-set to populate the Grafana Panels that we've provided
 #
 # File format:
 #
