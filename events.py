@@ -46,61 +46,57 @@ class WekaEventProcessor(object):
 
     # push msg log into grafana-loki
     def loki_logevent(self, timestamp, event, **labels):
-        if self.loki:
-            url = 'http://' + self.host + ':' + str(self.port) + '/loki/api/v1/push'  # set the URL
+        url = 'http://' + self.host + ':' + str(self.port) + '/loki/api/v1/push'  # set the URL
 
-            # set the headers
-            headers = {
-                'Content-type': 'application/json'
-            }
+        # set the headers
+        headers = {
+            'Content-type': 'application/json'
+        }
 
-            log.debug(f"{labels}")
-            # set the payload
-            payload = {
-                'streams': [
-                    {
-                        'stream': labels["labels"],
-                        'values': [
-                            [timestamp, event]
-                        ]
-                    }
-                ]
-            }
+        log.debug(f"{labels}")
+        # set the payload
+        payload = {
+            'streams': [
+                {
+                    'stream': labels["labels"],
+                    'values': [
+                        [timestamp, event]
+                    ]
+                }
+            ]
+        }
 
-            # encode payload to a string
-            payload_str = json.dumps(payload)
-            # log.debug( json.dumps(payload, indent=4, sort_keys=True) )
+        # encode payload to a string
+        payload_str = json.dumps(payload)
+        # log.debug( json.dumps(payload, indent=4, sort_keys=True) )
 
-            # this is where we actually send it
-            try:
-                answer = requests.post(url, data=payload_str, headers=headers)
-            except requests.exceptions.ConnectionError as exc:
-                log.critical(f"Unable to send Events to Loki: unable to establish connection: FATAL")
-                raise
-            except Exception as exc:
-                log.critical(f"Unable to send Events to Loki: {exc}")
-                raise
+        # this is where we actually send it
+        try:
+            answer = requests.post(url, data=payload_str, headers=headers)
+        except requests.exceptions.ConnectionError as exc:
+            log.critical(f"Unable to send Events to Loki: unable to establish connection: FATAL")
+            return False
+        except Exception as exc:
+            log.critical(f"Unable to send Events to Loki: {exc}")
+            return False
 
-            log.debug(f"status code: {answer.status_code}")
-            # check the return code
-            if answer.status_code == 400:
-                # I've only seen code 400 for duplicate entries; but I could be wrong. ;)
-                log.error(f"Error posting event; possible duplicate entry: {answer.text}")
-                return False
-            elif answer.status_code != 204:  # 204 is ok
-                log.error("loki_logevent(): bad http status code: " + str(answer.status_code) + " " + answer.text)
-                return False
+        log.debug(f"status code: {answer.status_code}")
+        # check the return code
+        if answer.status_code == 400:
+            # I've only seen code 400 for duplicate entries; but I could be wrong. ;)
+            log.error(f"Error posting event; possible duplicate entry: {answer.text}")
+            return False
+        elif answer.status_code != 204:  # 204 is ok
+            log.error("loki_logevent(): bad http status code: " + str(answer.status_code) + " " + answer.text)
+            return False
 
-            return True
-        else:
-            return False    #  ? not sure what to return yet
+        return True
 
         # end loki_logevent
 
     # format the events and send them up to Loki
     def send_events(self, event_dict, cluster, collector):
         MINS = 60
-        num_successful = 0
         if self.registry.lookup('node-host') is None or self.registry.get_age('node-host') > 5 * MINS:
             log.info(f"node-host map not populated... populating")
             collector.create_maps()
@@ -117,7 +113,7 @@ class WekaEventProcessor(object):
             return
 
         # must be sorted by timestamp or Loki will reject them
-        #last_eventtime = "0"
+        num_successful = 0
         for timestamp, event in sorted(event_dict.items()):  # oldest first
             labels = {
                 "source": "weka",
@@ -159,18 +155,18 @@ class WekaEventProcessor(object):
 
             syslog.info(f"WekaEvent: {description}") # send to syslog, if configured
 
+            success = False
             if self.loki:
-                try:
-                    if self.loki_logevent(timestamp, description, labels=labels):
-                        cluster.last_event_timestamp = event['timestamp']
-                        num_successful += 1
-                except:
-                    # error messages are already logged in loki_logevent
-                    continue   # just move on...
+                success = self.loki_logevent(timestamp, description, labels=labels)
 
-        log.info(f"Total events={len(event_dict)}; successfully sent {num_successful} events")
-        if num_successful != 0:
-            cluster.last_event_timestamp = cluster.last_get_events_time
+            if success:
+                num_successful += 1
+
+            cluster.last_event_timestamp = event['timestamp']
+
+        log.info(f"Total events={len(event_dict)}; successfully sent {num_successful} events to Loki")
+        #if self.loki and num_successful != 0:
+        #    cluster.last_event_timestamp = cluster.last_get_events_time
 
 
 if __name__ == '__main__':
