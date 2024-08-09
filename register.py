@@ -1,5 +1,6 @@
 #
-# maps - objects that map things (node ids to hostnames, etc)
+# register.py - This module provides a class to register and lookup objects by name.
+#               It also keeps track of the time each object was registered.
 #
 from threading import Lock
 import time
@@ -7,7 +8,7 @@ import time
 from logging import getLogger
 log = getLogger(__name__)
 
-class MapRegistry(object):
+class Registry(object):
     def __init__(self):
         self._lock = Lock()
         self.map_registry = dict()
@@ -36,6 +37,8 @@ class MapRegistry(object):
 
     def get_age(self, map_name):
         with self._lock:
+            if map_name not in self.timestamp:
+                return -1    # no age, as it was never registered
             try:
                 return time.time() - self.timestamp[map_name]
             except Exception as exc:

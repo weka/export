@@ -23,11 +23,11 @@ syslog = getLogger("event_syslog")
 
 
 class WekaEventProcessor(object):
-    def __init__(self, map_registry):
+    def __init__(self, registry):
         self.loki = False
         self.host = ""
         self.port = 0
-        self.registry = map_registry
+        self.registry = registry
 
 
     def configure_loki(self, lokihost, lokiport):
@@ -104,7 +104,7 @@ class WekaEventProcessor(object):
 
         node_host_map = self.registry.lookup('node-host')
         if node_host_map is None:
-            log.error(f"Unable to populate node-host map: {exc}")
+            log.error(f"Unable to populate node-host map: map creation failed")
 
         log.debug(f"node-host map age: {round(self.registry.get_age('node-host'),1)} seconds")
 

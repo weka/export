@@ -115,9 +115,10 @@ class WekaCollector(object):
             self.datapoints_per_collect = exporter['datapoints_per_collect']
         else:
             self.datapoints_per_collect = 1
-        self.map_registry = config["map_registry"]
+        self.registry = config["registry"]
 
         self.cluster = cluster_obj
+        self.wekadata = dict()
 
         global weka_stat_list
 
@@ -348,40 +349,42 @@ class WekaCollector(object):
                         self.clusterdata[str(cluster)][stat] += result.result
 
     def create_maps(self):
-        self.wekadata = dict()
         # get info from weka cluster - these are quick calls
-        for stat, command in self.WEKAINFO.items():
+        with self._access_lock:     # make it re-entrant
+            if self.registry.lookup('node-host') is not None and self.registry.get_age('node-host') < 50:  # 50 seconds
+                return  # already populated by another thread recently
+            for stat, command in self.WEKAINFO.items():
+                try:
+                    self.wekadata[stat] = self.cluster.call_api(command['method'], command['parms'])
+                    self.api_stats['num_calls'] += 1
+                except Exception as exc:
+                    log.error(f"error getting {stat} from cluster {self.cluster}: {exc}")
+                    # decision - if we can't get the basic info, we can't get anything else, so abort?
+
+            # clear old maps, if any - if nodes come/go this can get funky with old data, so re-create it every time
+            node_host_map = dict()
+            node_role_map = dict()
+            host_role_map = dict()
+
+            # populate maps
             try:
-                self.wekadata[stat] = self.cluster.call_api(command['method'], command['parms'])
-                self.api_stats['num_calls'] += 1
+                for node_id, node in self.wekadata["nodeList"].items():
+                    node_host_map[node_id] = node["hostname"]
+                    node_role_map[node_id] = node["roles"]
+                    # node["node_id"] = node_id   # this used to be inside here...
+                for host in self.wekadata["hostList"].values():  # node is a dict of node attribute
+                    if host['hostname'] not in host_role_map:  # there may be MCB, so might be there already
+                        if host["mode"] == "backend":
+                            host_role_map[host["hostname"]] = "server"
+                        else:
+                            host_role_map[host["hostname"]] = "client"
+                # update the maps so they can be used in the loki module
+                self.registry.register('node-host', node_host_map)
+                self.registry.register('node-role', node_role_map)
+                self.registry.register('host-role', host_role_map)
             except Exception as exc:
-                log.error(f"error getting {stat} from cluster {cluster}: {exc}")
-                # decision - if we can't get the basic info, we can't get anything else, so abort?
-
-        # clear old maps, if any - if nodes come/go this can get funky with old data, so re-create it every time
-        node_host_map = dict()
-        node_role_map = dict()
-        host_role_map = dict()
-
-        # populate maps
-        try:
-            for node_id, node in self.wekadata["nodeList"].items():
-                node_host_map[node_id] = node["hostname"]
-                node_role_map[node_id] = node["roles"]
-                # node["node_id"] = node_id   # this used to be inside here...
-            for host in self.wekadata["hostList"].values():  # node is a dict of node attribute
-                if host['hostname'] not in host_role_map:  # there may be MCB, so might be there already
-                    if host["mode"] == "backend":
-                        host_role_map[host["hostname"]] = "server"
-                    else:
-                        host_role_map[host["hostname"]] = "client"
-            # update the maps so they can be used in the loki module
-            self.map_registry.register('node-host', node_host_map)
-            self.map_registry.register('node-role', node_role_map)
-            self.map_registry.register('host-role', host_role_map)
-        except Exception as exc:
-            log.error(f"error building maps: {exc}: Aborting data gather from cluster {str(cluster)}")
-            raise
+                log.error(f"error building maps: {exc}: Aborting data gather from cluster {str(cluster)}")
+                raise
 
 
     #
@@ -414,14 +417,15 @@ class WekaCollector(object):
         # set up async api calling subsystem
         self.asyncobj = Async(cluster, self.max_procs, self.max_threads_per_proc)
 
+        self.wekadata = dict()
         try:
             self.create_maps()
         except Exception as exc:
             log.error(f"error creating maps: {exc}")
             return
-        node_host_map = self.map_registry.lookup('node-host')
-        node_role_map = self.map_registry.lookup('node-role')
-        host_role_map = self.map_registry.lookup('host-role')
+        node_host_map = self.registry.lookup('node-host')
+        node_role_map = self.registry.lookup('node-role')
+        host_role_map = self.registry.lookup('host-role')
 
         log.info(f"Cluster {cluster} Using {cluster.sizeof()} hosts")
 

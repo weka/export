@@ -7,7 +7,7 @@ exporter:
   listen_port: 8150
   loki_host: wms
   loki_port: 3100
-  events_only: True
+  events_only: False
   events_to_loki: True
   events_to_syslog: True
   timeout: 10.0

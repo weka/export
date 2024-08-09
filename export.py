@@ -23,7 +23,7 @@ import prometheus_client
 from events import WekaEventProcessor
 # local imports
 #from maps import Map, MapRegistry
-from maps import MapRegistry
+from register import Registry
 import wekalib.signals as signals
 from collector import WekaCollector
 from wekalib.wekacluster import WekaCluster
@@ -145,14 +145,13 @@ def prom_client(config):
         #log.critical(traceback.format_exc())
         return
 
-    maps = MapRegistry()
-    config["map_registry"] = maps
+    config["registry"] = Registry()
 
     # create the WekaCollector object
     collector = WekaCollector(config, cluster_obj)
 
     # create the event processor
-    event_processor = WekaEventProcessor(maps) if events_to_loki or events_to_syslog else None
+    event_processor = WekaEventProcessor(config["registry"]) if events_to_loki or events_to_syslog else None
 
     if event_processor is not None:
         if events_to_loki:
