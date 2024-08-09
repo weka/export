@@ -8,28 +8,32 @@
 
 # example of usage grafana/loki api when you need push any log/message from your python scipt
 import argparse
-import datetime
 import json
-# import syslog
 import time
 import socket
-import sys
 from logging import getLogger, INFO
 
-import dateutil
-import dateutil.parser
 import requests
 import urllib3
 
 from wekalib.wekatime import lokitime_to_wekatime, wekatime_to_datetime, lokitime_to_datetime, datetime_to_lokitime, datetime_to_wekatime
 
 log = getLogger(__name__)
+syslog = getLogger("event_syslog")
 
-class LokiServer(object):
-    def __init__(self, lokihost, lokiport, map_registry):
+
+class WekaEventProcessor(object):
+    def __init__(self, map_registry):
+        self.loki = False
+        self.host = ""
+        self.port = 0
+        self.registry = map_registry
+
+
+    def configure_loki(self, lokihost, lokiport):
+        self.loki = True
         self.host = lokihost
         self.port = lokiport
-        self.registry = map_registry
         # save some trouble, and make sure names are resolvable
         try:
             socket.gethostbyname(lokihost)
@@ -42,52 +46,54 @@ class LokiServer(object):
 
     # push msg log into grafana-loki
     def loki_logevent(self, timestamp, event, **labels):
-        url = 'http://' + self.host + ':' + str(self.port) + '/loki/api/v1/push'  # set the URL
+        if self.loki:
+            url = 'http://' + self.host + ':' + str(self.port) + '/loki/api/v1/push'  # set the URL
 
-        # set the headers
-        headers = {
-            'Content-type': 'application/json'
-        }
+            # set the headers
+            headers = {
+                'Content-type': 'application/json'
+            }
 
-        log.debug(f"{labels}")
-        # set the payload
-        payload = {
-            'streams': [
-                {
-                    'stream': labels["labels"],
-                    'values': [
-                        [timestamp, event]
-                    ]
-                }
-            ]
-        }
+            log.debug(f"{labels}")
+            # set the payload
+            payload = {
+                'streams': [
+                    {
+                        'stream': labels["labels"],
+                        'values': [
+                            [timestamp, event]
+                        ]
+                    }
+                ]
+            }
 
-        # encode payload to a string
-        payload_str = json.dumps(payload)
-        # log.debug( json.dumps(payload, indent=4, sort_keys=True) )
+            # encode payload to a string
+            payload_str = json.dumps(payload)
+            # log.debug( json.dumps(payload, indent=4, sort_keys=True) )
 
-        # this is where we actually send it
-        try:
-            answer = requests.post(url, data=payload_str, headers=headers)
-        except requests.exceptions.ConnectionError as exc:
-            log.critical(f"Unable to send Events to Loki: unable to establish connection: FATAL")
-            raise
+            # this is where we actually send it
+            try:
+                answer = requests.post(url, data=payload_str, headers=headers)
+            except requests.exceptions.ConnectionError as exc:
+                log.critical(f"Unable to send Events to Loki: unable to establish connection: FATAL")
+                raise
+            except Exception as exc:
+                log.critical(f"Unable to send Events to Loki: {exc}")
+                raise
 
-        except Exception as exc:
-            log.critical(f"Unable to send Events to Loki")
-            raise
+            log.debug(f"status code: {answer.status_code}")
+            # check the return code
+            if answer.status_code == 400:
+                # I've only seen code 400 for duplicate entries; but I could be wrong. ;)
+                log.error(f"Error posting event; possible duplicate entry: {answer.text}")
+                return False
+            elif answer.status_code != 204:  # 204 is ok
+                log.error("loki_logevent(): bad http status code: " + str(answer.status_code) + " " + answer.text)
+                return False
 
-        log.debug(f"status code: {answer.status_code}")
-        # check the return code
-        if answer.status_code == 400:
-            # I've only seen code 400 for duplicate entries; but I could be wrong. ;)
-            log.error(f"Error posting event; possible duplicate entry: {answer.text}")
-            return False
-        elif answer.status_code != 204:  # 204 is ok
-            log.error("loki_logevent(): bad http status code: " + str(answer.status_code) + " " + answer.text)
-            return False
-    
-        return True
+            return True
+        else:
+            return False    #  ? not sure what to return yet
 
         # end loki_logevent
 
@@ -151,71 +157,20 @@ class LokiServer(object):
             description = f"cluster:{cluster.name} :{orig_sev}: {event['type']}: {event['description']}"
             log.debug(f"sending event: timestamp={timestamp}, labels={labels}, desc={description}")
 
-            log.log(INFO, f"WekaEvent: {description}") # send to syslog
+            syslog.info(f"WekaEvent: {description}") # send to syslog, if configured
 
-            try:
-                if self.loki_logevent(timestamp, description, labels=labels):
-                    # only update time if upload successful, so we don't drop events (they should retry upload next time)
-                    cluster.last_event_timestamp = event['timestamp']
-                    num_successful += 1
-            except:
-                continue   # if it has an exception, abort 
-
+            if self.loki:
+                try:
+                    if self.loki_logevent(timestamp, description, labels=labels):
+                        cluster.last_event_timestamp = event['timestamp']
+                        num_successful += 1
+                except:
+                    # error messages are already logged in loki_logevent
+                    continue   # just move on...
 
         log.info(f"Total events={len(event_dict)}; successfully sent {num_successful} events")
         if num_successful != 0:
             cluster.last_event_timestamp = cluster.last_get_events_time
-
-        # end send_events
-
-
-# Not used anymore... but might come in handy
-# get the time of the last event that Loki has for this cluster so we know where we left off
-def last_lokievent_time(lokihost, port, cluster):
-    http_pool = urllib3.PoolManager()
-    log.debug("getting last event from Loki")
-    # url = 'http://' + lokihost + ':' + str(port) + '/loki/api/v1/query'   # set the URL
-    url = 'http://' + lokihost + ':' + str(port) + '/loki/api/v1/query_range'  # set the URL
-
-    # set the headers
-    headers = {
-        'Content-type': 'application/json'
-    }
-
-    clusternamequery = "{cluster=\"" + f"{cluster.name}" + "\"}"
-    fields = {
-        # 'direction': "BACKWARDS",
-        'query': clusternamequery
-    }
-    try:
-        latest = http_pool.request('GET', url, fields=fields)
-    except Exception as exc:
-        log.debug(f"{exc} caught")
-        return "0"
-
-    if latest.status != 200:
-        return "0"
-
-    log.debug(f"{latest.status} {latest.data}")
-    latest_data = json.loads(latest.data)
-
-    newest = 0
-    # log.debug(f"latest_data={json.dumps(latest_data, indent=4)}")
-    results = latest_data["data"]["result"]
-    for result in results:
-        values = result["values"]
-        for value in values:
-            if int(value[0]) > newest:
-                newest = int(value[0])
-            log.debug(f"timeval={lokitime_to_wekatime(value[0])}")
-
-    first_result = str(newest)
-
-    log.debug(f"first_result={first_result}, {lokitime_to_wekatime(first_result)}")
-
-    return first_result
-
-    # end last_lokievent_time
 
 
 if __name__ == '__main__':

@@ -810,7 +810,7 @@ class WekaCollector(object):
 
     # ------------- end of gather() -------------
 
-    def collect_logs(self, lokiserver):
+    def collect_logs(self, event_processor):
         with self._access_lock:  # make sure we don't conflict with a metrics collection
             log.info(f"getting events for cluster {self.cluster}")
             try:
@@ -828,7 +828,7 @@ class WekaCollector(object):
             return
 
         try:
-            lokiserver.send_events(events, self.cluster, self)
+            event_processor.send_events(events, self.cluster, self)
         except Exception as exc:
             log.critical(f"Error sending events: {exc} for cluster {self.cluster}")
             # log.critical(f"{traceback.format_exc()}")

@@ -20,16 +20,16 @@ import socket
 
 import prometheus_client
 
+from events import WekaEventProcessor
 # local imports
 #from maps import Map, MapRegistry
 from maps import MapRegistry
 import wekalib.signals as signals
 from collector import WekaCollector
-from lokilogs import LokiServer
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "1.7.4"
+VERSION = "1.7.5"
 
 #VERSION = "experimental"
 
@@ -76,39 +76,59 @@ def prom_client(config):
         log.error(f"'exporter:' stanza missing from .yml file - version mismatch between .yml and exporter version?")
         sys.exit(1)
 
-    if 'force_https' not in config['cluster']:  # allow defaults for these
-        config['cluster']['force_https'] = False
+    # Parse config file, set defaults for missing values
+    cluster = config['cluster']
+    exporter = config['exporter']
 
-    if 'verify_cert' not in config['cluster']:
-        config['cluster']['verify_cert'] = True
+    # cluster options
+    cluster['force_https'] = cluster.get('force_https', False)
+    cluster['verify_cert'] = cluster.get('verify_cert', True)
+    cluster['mgmt_port'] = cluster.get('mgmt_port', 14000)
 
-    if 'mgmt_port' not in config['cluster']:
-        config['cluster']['mgmt_port'] = 14000
+    # exporter options
+    exporter['timeout'] = exporter.get('timeout', 10)
+    exporter['backends_only'] = exporter.get('backends_only', False)
+    exporter['datapoints_per_collect'] = exporter.get('datapoints_per_collect', 1)
+    exporter['certfile'] = exporter.get('certfile', None)
+    exporter['keyfile'] = exporter.get('keyfile', None)
 
-    if 'timeout' not in config['exporter']:
-        config['exporter']['timeout'] = 10
+    # logging options
+    events_to_loki = exporter.get('events_to_loki', True)
+    events_to_syslog = exporter.get('events_to_syslog', True)
 
-    if 'backends_only' not in config['exporter']:
-        config['exporter']['backends_only'] = False
+    # is there a loki server set?
+    loki_host = exporter.get('loki_host', None)
+    loki_port = exporter.get('loki_port', 3100)
+    events_only = exporter.get('events_only', False)
 
-    if 'datapoints_per_collect' not in config['exporter']:
-        config['exporter']['datapoints_per_collect'] = 1
-
-    if 'certfile' not in config['exporter']:
-        config['exporter']['certfile'] = None
-
-    if 'keyfile' not in config['exporter']:
-        config['exporter']['keyfile'] = None
-
-    log.info(f"Timeout set to {config['exporter']['timeout']} secs")
+    # log the timeout
+    log.info(f"Prometheus Exporter for Weka version {VERSION}")
+    log.info("Configuration:")
+    #log.info(f"config file: {config['configfile']}")
+    log.info(f"cluster hosts: {cluster['hosts']}")
+    if len(cluster['hosts']) <= 1:
+        log.warning(f"Only one host defined - consider adding more for HA")
+    log.info(f"force_https: {cluster['force_https']}")
+    log.info(f"verify_cert: {cluster['verify_cert']}")
+    log.info(f"mgmt_port: {cluster['mgmt_port']}")
+    log.info(f"timeout: {exporter['timeout']} secs")
+    log.info(f"backends_only: {exporter['backends_only']}")
+    log.info(f"datapoints_per_collect: {exporter['datapoints_per_collect']}")
+    log.info(f"certfile: {exporter['certfile']}")
+    log.info(f"keyfile: {exporter['keyfile']}")
+    log.info(f"loki_host: {loki_host}")
+    log.info(f"loki_port: {loki_port}")
+    log.info(f"events_only: {events_only}")
+    log.info(f"events_to_loki: {events_to_loki}")
+    log.info(f"events_to_syslog: {events_to_syslog}")
 
     try:
-        cluster_obj = WekaCluster(config['cluster']['hosts'], config['cluster']['auth_token_file'], 
-                                  force_https=config['cluster']['force_https'], 
-                                  verify_cert=config['cluster']['verify_cert'], 
-                                  backends_only=config['exporter']['backends_only'],
-                                  timeout=config['exporter']['timeout'],
-                                  mgmt_port=config['cluster']['mgmt_port'])
+        cluster_obj = WekaCluster(cluster['hosts'], cluster['auth_token_file'],
+                                  force_https=cluster['force_https'],
+                                  verify_cert=cluster['verify_cert'],
+                                  backends_only=exporter['backends_only'],
+                                  timeout=exporter['timeout'],
+                                  mgmt_port=cluster['mgmt_port'])
     except wekalib.exceptions.HTTPError as exc:
         if exc.code == 403:
             log.critical(f"Cluster returned permission error - is the userid level ReadOnly or above?")
@@ -131,28 +151,24 @@ def prom_client(config):
     # create the WekaCollector object
     collector = WekaCollector(config, cluster_obj)
 
-    # is there a loki server set?
-    loki_host = config['exporter'].get('loki_host', None)
-    loki_port = config['exporter'].get('loki_port', 3100)
-    loki_only = config['exporter'].get('loki_only', False)
+    # create the event processor
+    event_processor = WekaEventProcessor(maps) if events_to_loki or events_to_syslog else None
 
-    if loki_host is not None and len(loki_host) != 0:
-        log.info(f"loki_host set to {loki_host}")
-        try:
-            lokiserver = LokiServer(loki_host, loki_port, maps)
-        except:
-            sys.exit(1)
+    if event_processor is not None:
+        if events_to_loki:
+            log.info("Events to Loki enabled")
+            event_processor.configure_loki(loki_host, loki_port)
+
+        configure_event_syslog(events_to_syslog)
     else:
-        lokiserver = None
-
-    if loki_only and lokiserver is None:
-        log.critical("loki_only set, but no Loki server defined in config file")
-        sys.exit(1)
+        if events_only:
+            log.critical("events_only set, but not configured to send them anywhere")
+            sys.exit(1)
 
     #
     # Start up the server to expose the metrics.
     #
-    if not loki_only:
+    if not events_only:
         log.info(f"starting http server on port {config['exporter']['listen_port']}")
         try:
             if config['exporter']['certfile'] is not None and config['exporter']['keyfile'] is not None:
@@ -170,35 +186,27 @@ def prom_client(config):
 
     while True:
         time.sleep(30)  # sleep first, just in case we're started at the same time as Loki; give it time
-        if lokiserver is not None:
-            if loki_only:
-                log.info(f"running in Loki-only mode")
-            collector.collect_logs(lokiserver)
+        if event_processor is not None:
+            collector.collect_logs(event_processor)
 
-
-def configure_logging(logger, verbosity, disable_syslog=False):
+def configure_logging(logger, verbosity):
     loglevel = logging.INFO     # default logging level
     libloglevel = logging.ERROR
 
     # default message formats
     console_format = "%(message)s"
-    syslog_format =  "%(levelname)s:%(message)s"
-
-    syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
+    #syslog_format =  "%(levelname)s:%(message)s"
 
     if verbosity == 1:
         loglevel = logging.INFO
         console_format = "%(levelname)s:%(message)s"
-        syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
         libloglevel = logging.INFO
     elif verbosity == 2:
         loglevel = logging.DEBUG
         console_format = "%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
-        syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
     elif verbosity > 2:
         loglevel = logging.DEBUG
         console_format = "%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
-        syslog_format =  "%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
         libloglevel = logging.DEBUG
 
 
@@ -206,20 +214,6 @@ def configure_logging(logger, verbosity, disable_syslog=False):
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(logging.Formatter(console_format))
     logger.addHandler(console_handler)
-
-    if not disable_syslog:
-        # create handler to log to syslog
-        logger.info(f"setting syslog on {platform.platform()}")
-        if platform.platform()[:5] == "macOS":
-            syslogaddr = "/var/run/syslog"
-        else:
-            syslogaddr = "/dev/log"
-        syslog_handler = logging.handlers.SysLogHandler(syslogaddr)
-        syslog_handler.setFormatter(logging.Formatter(syslog_format))
-
-        # add syslog handler to root logger
-        if syslog_handler is not None:
-            logger.addHandler(syslog_handler)
 
     # set default loglevel
     logger.setLevel(loglevel)
@@ -234,6 +228,52 @@ def configure_logging(logger, verbosity, disable_syslog=False):
     logging.getLogger("collector").setLevel(loglevel)
     logging.getLogger("lokilogs").setLevel(loglevel)
     logging.getLogger("async_api").setLevel(loglevel)
+
+
+def configure_syslog(logger, enabled=False):
+    # see if there is a handler already
+    syslog_handler = get_handler(logger, logging.handlers.SysLogHandler)
+
+    if enabled:
+        if syslog_handler is None:
+            syslogaddr = "/var/run/syslog" if platform.platform()[:5] == "macOS" else "/dev/log"
+            log.info(f"enabling syslog program logging to {syslogaddr}")
+            syslog_handler = logging.handlers.SysLogHandler(syslogaddr)
+            logger.addHandler(syslog_handler)
+
+        syslog_handler.setFormatter(
+                logging.Formatter("%(process)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"))
+        log.info("syslog enabled")
+    else:
+        if syslog_handler is not None:
+            logger.removeHandler(syslog_handler)
+        log.info("syslog program logging disabled")
+
+
+def configure_event_syslog(enabled=False):
+    syslog = logging.getLogger("event_syslog")
+    if enabled:
+        syslog.setLevel(logging.INFO)
+        # see if there is a handler already
+        syslog_handler = get_handler(syslog, logging.handlers.SysLogHandler)
+        if syslog_handler is None:
+            syslogaddr = "/var/run/syslog" if platform.platform()[:5] == "macOS" else "/dev/log"
+            syslog_handler = logging.handlers.SysLogHandler(syslogaddr)
+            syslog.addHandler(syslog_handler)
+        syslog_handler.setFormatter(logging.Formatter("%(message)s"))
+        log.info("event syslog enabled")
+    else:
+        handler = get_handler(syslog, logging.handlers.SysLogHandler)
+        if handler is not None:
+            syslog.removeHandler(handler)
+        log.info("event syslog disabled")
+
+
+def get_handler(logger, handler_type):
+    for handler in logger.handlers:
+        if isinstance(handler, handler_type):
+            return handler
+    return None
 
 
 def main():
@@ -252,7 +292,8 @@ def main():
         print(f"{sys.argv[0]} version {VERSION}")
         sys.exit(0)
 
-    configure_logging(log, args.verbosity, disable_syslog=args.no_syslog)
+    configure_logging(log, args.verbosity)
+    configure_syslog(log, not args.no_syslog)  # program syslog logging
 
     if not os.path.exists(args.configfile):
         log.critical(f"Required configfile '{args.configfile}' does not exist")
@@ -266,6 +307,7 @@ def main():
         return
     log.debug("config file loaded")
 
+    # main loop
     prom_client(config)
 
 
