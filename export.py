@@ -145,6 +145,7 @@ def prom_client(config):
         #log.critical(traceback.format_exc())
         return
 
+
     config["registry"] = Registry()
 
     # create the WekaCollector object
@@ -183,6 +184,8 @@ def prom_client(config):
         # register our custom collector
         prometheus_client.REGISTRY.register(collector)
 
+    time.sleep(30)  # sleep first, just in case we're started at the same time as Loki; give it time
+    log.info("Starting Event gathering loop")
     while True:
         time.sleep(30)  # sleep first, just in case we're started at the same time as Loki; give it time
         if event_processor is not None:

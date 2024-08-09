@@ -348,43 +348,54 @@ class WekaCollector(object):
                     else:
                         self.clusterdata[str(cluster)][stat] += result.result
 
+
+    # refresh_maps() is called by the events.py routine to ensure the node-host map is up to date
+    def refresh_maps(self):
+        with self._access_lock:
+            if self.registry.lookup('node-host') is None or self.registry.get_age('node-host') > 5 * 60:
+                log.info(f"node-host map not populated... populating")
+                self.create_maps()
+                log.info(f"node-host map populated.")
+
     def create_maps(self):
         # get info from weka cluster - these are quick calls
-        with self._access_lock:     # make it re-entrant
-            if self.registry.lookup('node-host') is not None and self.registry.get_age('node-host') < 50:  # 50 seconds
-                return  # already populated by another thread recently
-            for stat, command in self.WEKAINFO.items():
-                try:
-                    self.wekadata[stat] = self.cluster.call_api(command['method'], command['parms'])
-                    self.api_stats['num_calls'] += 1
-                except Exception as exc:
-                    log.error(f"error getting {stat} from cluster {self.cluster}: {exc}")
-                    # decision - if we can't get the basic info, we can't get anything else, so abort?
-
-            # clear old maps, if any - if nodes come/go this can get funky with old data, so re-create it every time
-            node_host_map = dict()
-            node_role_map = dict()
-            host_role_map = dict()
-
-            # populate maps
+        self.cluster.refresh()
+        if self.registry.lookup('node-host') is not None and self.registry.get_age('node-host') < 50:  # 50 seconds
+            return  # already populated by another thread recently
+        # re-initialize self.wekadata so changes in the cluster don't leave behind strange things (hosts/nodes that no longer exist, etc)
+        self.wekadata = dict()
+        for stat, command in self.WEKAINFO.items():
             try:
-                for node_id, node in self.wekadata["nodeList"].items():
-                    node_host_map[node_id] = node["hostname"]
-                    node_role_map[node_id] = node["roles"]
-                    # node["node_id"] = node_id   # this used to be inside here...
-                for host in self.wekadata["hostList"].values():  # node is a dict of node attribute
-                    if host['hostname'] not in host_role_map:  # there may be MCB, so might be there already
-                        if host["mode"] == "backend":
-                            host_role_map[host["hostname"]] = "server"
-                        else:
-                            host_role_map[host["hostname"]] = "client"
-                # update the maps so they can be used in the loki module
-                self.registry.register('node-host', node_host_map)
-                self.registry.register('node-role', node_role_map)
-                self.registry.register('host-role', host_role_map)
+                self.wekadata[stat] = self.cluster.call_api(command['method'], command['parms'])
+                self.api_stats['num_calls'] += 1
             except Exception as exc:
-                log.error(f"error building maps: {exc}: Aborting data gather from cluster {str(cluster)}")
-                raise
+                log.error(f"error getting {stat} from cluster {self.cluster}: {exc}")
+                # decision - if we can't get the basic info, we can't get anything else, so abort?
+
+        # clear old maps, if any - if nodes come/go this can get funky with old data, so re-create it every time
+        node_host_map = dict()
+        node_role_map = dict()
+        host_role_map = dict()
+
+        # populate maps
+        try:
+            for node_id, node in self.wekadata["nodeList"].items():
+                node_host_map[node_id] = node["hostname"]
+                node_role_map[node_id] = node["roles"]
+                # node["node_id"] = node_id   # this used to be inside here...
+            for host in self.wekadata["hostList"].values():  # node is a dict of node attribute
+                if host['hostname'] not in host_role_map:  # there may be MCB, so might be there already
+                    if host["mode"] == "backend":
+                        host_role_map[host["hostname"]] = "server"
+                    else:
+                        host_role_map[host["hostname"]] = "client"
+            # update the maps so they can be used in the loki module
+            self.registry.register('node-host', node_host_map)
+            self.registry.register('node-role', node_role_map)
+            self.registry.register('host-role', host_role_map)
+        except Exception as exc:
+            log.error(f"error building maps: {exc}: Aborting data gather from cluster {str(cluster)}")
+            raise
 
 
     #
@@ -400,24 +411,22 @@ class WekaCollector(object):
         start_time = time.time()
         log.info("gathering weka data from cluster {}".format(str(cluster)))
 
-        # re-initialize self.wekadata so changes in the cluster don't leave behind strange things (hosts/nodes that no longer exist, etc)
-        #self.wekadata = {}
+        # clear the metrics from clusterdata
         self.clusterdata[str(cluster)] = dict()
-
-        # reset the cluster config to be sure we can talk to all the hosts
-        try:
-            cluster.refresh()
-        except wekalib.exceptions.NameNotResolvable as exc:
-            log.critical(f"Names are not resolvable - are they in /etc/hosts or DNS? {exc}")
-            raise
-        except Exception as exc:
-            log.error(f"Cluster refresh failed on cluster '{cluster}' - check connectivity ({exc})")
-            raise
 
         # set up async api calling subsystem
         self.asyncobj = Async(cluster, self.max_procs, self.max_threads_per_proc)
 
-        self.wekadata = dict()
+        # reset the cluster config to be sure we can talk to all the hosts
+        #try:
+        #    cluster.refresh()
+        #except wekalib.exceptions.NameNotResolvable as exc:
+        #    log.critical(f"Names are not resolvable - are they in /etc/hosts or DNS? {exc}")
+        #    raise
+        #except Exception as exc:
+        #    log.error(f"Cluster refresh failed on cluster '{cluster}' - check connectivity ({exc})")
+        #    raise
+
         try:
             self.create_maps()
         except Exception as exc:

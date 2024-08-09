@@ -97,10 +97,11 @@ class WekaEventProcessor(object):
     # format the events and send them up to Loki
     def send_events(self, event_dict, cluster, collector):
         MINS = 60
-        if self.registry.lookup('node-host') is None or self.registry.get_age('node-host') > 5 * MINS:
-            log.info(f"node-host map not populated... populating")
-            collector.create_maps()
-            log.info(f"node-host map populated.")
+        collector.refresh_maps()
+        #if self.registry.lookup('node-host') is None or self.registry.get_age('node-host') > 5 * MINS:
+        #    log.info(f"node-host map not populated... populating")
+        #    collector.create_maps()
+        #    log.info(f"node-host map populated.")
 
         node_host_map = self.registry.lookup('node-host')
         if node_host_map is None:
