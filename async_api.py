@@ -266,6 +266,7 @@ class Async():
         self.max_threads_per_proc = max_threads_per_proc
 
         # # of processes and threads to run...  (self-tuning)
+        cluster_size = self.cluster.sizeof()
         self.num_slaves = math.ceil(self.cluster.sizeof() / self.max_threads_per_proc)
         if self.num_slaves > max_procs:
             self.num_slaves = max_procs   # limit the number of slave processes we start
