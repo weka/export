@@ -29,7 +29,7 @@ from collector import WekaCollector
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "1.8.1"
+VERSION = "1.8.2"
 
 #VERSION = "experimental"
 
@@ -92,14 +92,21 @@ def prom_client(config):
     exporter['certfile'] = exporter.get('certfile', None)
     exporter['keyfile'] = exporter.get('keyfile', None)
 
-    # logging options
-    events_to_loki = exporter.get('events_to_loki', True)
-    events_to_syslog = exporter.get('events_to_syslog', True)
-
     # is there a loki server set?
     loki_host = exporter.get('loki_host', None)
     loki_port = exporter.get('loki_port', 3100)
     events_only = exporter.get('events_only', False)
+
+    # logging options - check for configuration errors
+    if loki_host is None or len(loki_host) == 0:
+        events_to_loki = False
+        if 'events_to_loki' in exporter and exporter['events_to_loki']:
+            log.error("events_to_loki set to True, but no Loki server defined; disabling events_to_loki")
+        else:
+            log.info("No Loki server defined; events_to_loki disabled")
+    else:
+        events_to_loki = exporter.get('events_to_loki', True)
+    events_to_syslog = exporter.get('events_to_syslog', False)
 
     # log the timeout
     log.info(f"Prometheus Exporter for Weka version {VERSION}")
