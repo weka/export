@@ -446,12 +446,15 @@ class WekaCollector(object):
         #
         #
 
-        node_maps = {"FRONTEND": {}, "COMPUTE": {}, "DRIVES": {}, "MANAGEMENT": {}}  # initial state of maps
+        #node_maps = {"FRONTEND": {}, "COMPUTE": {}, "DRIVES": {}, "MANAGEMENT": {}}  # initial state of maps
+        node_maps = dict()
 
         # log.debug(f'{weka_maps["node-role"]}')
 
         for node in node_role_map:  # node == "NodeId<xx>"
             for role in node_role_map[node]:
+                if role not in node_maps:
+                    node_maps[role] = dict()
                 nid = int(node.split('<')[1].split('>')[0])  # make nodeid numeric
                 hostname = node_host_map[node]
                 if hostname not in node_maps[role]:
@@ -460,15 +463,16 @@ class WekaCollector(object):
 
         # log.debug(f"{str(self.cluster)} {json.dumps(node_maps, indent=4)}")
 
+        # no longer used
         # find a better place to define this... for now here is good (vince)
-        category_nodetypes = {
-            'cpu': ['FRONTEND', 'COMPUTE', 'DRIVES'],
-            'ops': ['FRONTEND'],
-            'ops_driver': ['FRONTEND'],
-            'ops_nfs': ['COMPUTE'],  # not sure about this one
-            'ssd': ['DRIVES'],
-            'network': ['FRONTEND', 'COMPUTE', 'DRIVES']
-        }
+        #category_nodetypes = {
+        #    'cpu': ['FRONTEND', 'COMPUTE', 'DRIVES'],
+        #    'ops': ['FRONTEND'],
+        #    'ops_driver': ['FRONTEND'],
+        #    'ops_nfs': ['COMPUTE'],  # not sure about this one
+        #    'ssd': ['DRIVES'],
+        #    'network': ['FRONTEND', 'COMPUTE', 'DRIVES']
+        #}
 
         # new impl
         # up_list is a list of all the good hosts (ie: not down)
