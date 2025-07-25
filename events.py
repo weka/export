@@ -30,15 +30,33 @@ class WekaEventProcessor(object):
         self.registry = registry
 
 
-    def configure_loki(self, lokihost, lokiport):
+    def configure_loki(self, loki):
         self.loki = True
-        self.host = lokihost
-        self.port = lokiport
+        self.config = loki
+        self.url = f"{self.config['protocol']}://{self.config['host']}:{self.config['port']}{self.config['path']}"
+
+        # set user & password, if needed
+        if self.config['user'] is not None and self.config['password'] is not None:
+            self.auth = (self.config['user'], self.config['password'])
+            log.debug(f"Using password authentication")
+        else:
+            self.auth = None
+
+        # set the headers
+        self.headers = {
+            'Content-type': 'application/json'
+        }
+
+        # ord_id is for multi-tenancy in Loki
+        if self.config['org_id'] is not None:
+            self.headers['X-Scope-OrgID'] = self.config['org_id']
+            log.debug(f"Setting OrgID to {self.config['org_id']}")
+
         # save some trouble, and make sure names are resolvable
         try:
-            socket.gethostbyname(lokihost)
+            socket.gethostbyname(self.config['host'])
         except socket.gaierror as exc:
-            log.critical(f"Loki Server name '{lokihost}' is not resolvable - is it in /etc/hosts or DNS?")
+            log.critical(f"Loki Server name '{self.config['host']}' is not resolvable - is it in /etc/hosts or DNS?")
             raise
         except Exception as exc:
             log.critical(exc)
@@ -46,13 +64,6 @@ class WekaEventProcessor(object):
 
     # push msg log into grafana-loki
     def loki_logevent(self, timestamp, event, **labels):
-        url = 'http://' + self.host + ':' + str(self.port) + '/loki/api/v1/push'  # set the URL
-
-        # set the headers
-        headers = {
-            'Content-type': 'application/json'
-        }
-
         log.debug(f"{labels}")
         # set the payload
         payload = {
@@ -72,9 +83,15 @@ class WekaEventProcessor(object):
 
         # this is where we actually send it
         try:
-            answer = requests.post(url, data=payload_str, headers=headers)
+            answer = requests.post(self.url,
+                                   data=payload_str,
+                                   headers=self.headers,
+                                   auth=self.auth,
+                                   verify=self.config['verify_cert'],
+                                   cert=self.config['client_cert']
+                                   )
         except requests.exceptions.ConnectionError as exc:
-            log.critical(f"Unable to send Events to Loki: unable to establish connection: FATAL")
+            log.critical(f"Unable to send Event to Loki: unable to establish connection: FATAL: {exc}")
             return False
         except Exception as exc:
             log.critical(f"Unable to send Events to Loki: {exc}")

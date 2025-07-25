@@ -5,6 +5,8 @@
 # exporter section - info about how we're going to run
 exporter:
   listen_port: 8150
+  loki_host: wms
+  loki_port: 3100
   events_only: False
   events_to_loki: True
   events_to_syslog: True
@@ -16,22 +18,11 @@ exporter:
   certfile: null
   keyfile: null
 
-loki:
-  host: localhost
-  port: 3100
-  protocol: https
-  path: /loki/api/v1/push
-  user: null
-  password: null
-  org_id: null
-  client_cert: null
-  verify_cert: False
-
 # cluster section - info about the weka cluster we want to export data from:
 cluster:
   auth_token_file: auth-token.json
   hosts:
-    - 172.29.0.65
+    - 172.29.0.64
   force_https: False   # only 3.10+ clusters support https
   verify_cert: False  # default cert cannot be verified
   mgmt_port: 14000
