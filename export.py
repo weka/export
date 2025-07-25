@@ -29,7 +29,7 @@ from collector import WekaCollector
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "20250326"
+VERSION = "20250711"
 
 #VERSION = "experimental"
 
@@ -54,7 +54,92 @@ def _load_config(inputfile):
             raise
 
 def prom_client(config):
+    # Parse config data, set defaults for missing values
+    exporter = config.get('exporter', None)
+    loki = config.get('loki', None)
+    cluster = config.get('cluster', None)
 
+    if exporter is None:
+        log.error('Config file is missing "exporter" configuration.  Terminating.')
+        sys.exit(1)
+    elif cluster is None:
+        log.error('Config file is missing "cluster" configuration.  Terminating.')
+        sys.exit(1)
+    elif loki is None and ("loki_host" not in exporter or
+                           exporter['loki_host'] is None or
+                           len(exporter['loki_host']) == 0):
+        log.info('Config file is missing "loki" configuration. Not sending Events to Loki')
+        if 'events_to_loki' in exporter and exporter['events_to_loki']:
+            log.error("events_to_loki set to True, but no Loki server defined; disabling events_to_loki")
+        else:
+            log.info("No Loki server defined; events_to_loki disabled")
+        events_to_loki = False
+    else:
+        events_to_loki = exporter.get('events_to_loki', True)
+
+    # cluster options
+    cluster['force_https'] = cluster.get('force_https', False)
+    cluster['verify_cert'] = cluster.get('verify_cert', True)
+    cluster['mgmt_port'] = cluster.get('mgmt_port', 14000)
+
+    # exporter options
+    exporter['timeout'] = exporter.get('timeout', 10)
+    exporter['backends_only'] = exporter.get('backends_only', False)
+    exporter['datapoints_per_collect'] = exporter.get('datapoints_per_collect', 1)
+    exporter['certfile'] = exporter.get('certfile', None)
+    exporter['keyfile'] = exporter.get('keyfile', None)
+
+    # is there a loki server set?
+    if events_to_loki:
+        if loki is None:
+            loki = dict()
+            loki['host'] = exporter.get('loki_host', None)
+            loki['port'] = exporter.get('loki_port', 3100)
+            loki['protocol'] = 'http'
+            loki['path'] = '/loki/api/v1/push'
+            loki['user'] = None
+            loki['password'] = None
+            loki['org_id'] = None
+            loki['client_cert'] = None
+            loki['verify_cert'] = False
+        else:
+            # set defaults, if needed
+            loki['host'] = loki.get('host', None)
+            loki['port'] = loki.get('port', 3100)
+            loki['protocol'] = loki.get('protocol', 'http')
+            loki['path'] = loki.get('path', '/loki/api/v1/push')
+            loki['user'] = loki.get('user', None)
+            loki['password'] = loki.get('password', None)
+            loki['org_id'] = loki.get('org_id', None)
+            loki['client_cert'] = loki.get('client_cert', None)
+            loki['verify_cert'] = loki.get('verify_cert', False)
+
+    events_only = exporter.get('events_only', False)
+    events_to_syslog = exporter.get('events_to_syslog', False)
+
+    # log the timeout
+    log.info(f"Prometheus Exporter for Weka version {VERSION}")
+    log.info("Configuration:")
+    #log.info(f"config file: {config['configfile']}")
+    log.info(f"cluster hosts: {cluster['hosts']}")
+    if len(cluster['hosts']) <= 1:
+        log.warning(f"Only one host defined - consider adding more for HA")
+    log.info(f"force_https: {cluster['force_https']}")
+    log.info(f"verify_cert: {cluster['verify_cert']}")
+    log.info(f"mgmt_port: {cluster['mgmt_port']}")
+    log.info(f"timeout: {exporter['timeout']} secs")
+    log.info(f"backends_only: {exporter['backends_only']}")
+    log.info(f"datapoints_per_collect: {exporter['datapoints_per_collect']}")
+    log.info(f"certfile: {exporter['certfile']}")
+    log.info(f"keyfile: {exporter['keyfile']}")
+    #log.info(f"loki_host: {loki_host}")
+    #log.info(f"loki_port: {loki_port}")
+    log.info(f"events_only: {events_only}")
+    log.info(f"events_to_loki: {events_to_loki}")
+    log.info(f"events_to_syslog: {events_to_syslog}")
+    log.info(f'loki config: {loki}')
+
+    # check that we have name resolution
     error = False
     for host in config['cluster']['hosts']:
         try:
@@ -76,58 +161,6 @@ def prom_client(config):
         log.error(f"'exporter:' stanza missing from .yml file - version mismatch between .yml and exporter version?")
         sys.exit(1)
 
-    # Parse config file, set defaults for missing values
-    cluster = config['cluster']
-    exporter = config['exporter']
-
-    # cluster options
-    cluster['force_https'] = cluster.get('force_https', False)
-    cluster['verify_cert'] = cluster.get('verify_cert', True)
-    cluster['mgmt_port'] = cluster.get('mgmt_port', 14000)
-
-    # exporter options
-    exporter['timeout'] = exporter.get('timeout', 10)
-    exporter['backends_only'] = exporter.get('backends_only', False)
-    exporter['datapoints_per_collect'] = exporter.get('datapoints_per_collect', 1)
-    exporter['certfile'] = exporter.get('certfile', None)
-    exporter['keyfile'] = exporter.get('keyfile', None)
-
-    # is there a loki server set?
-    loki_host = exporter.get('loki_host', None)
-    loki_port = exporter.get('loki_port', 3100)
-    events_only = exporter.get('events_only', False)
-
-    # logging options - check for configuration errors
-    if loki_host is None or len(loki_host) == 0:
-        events_to_loki = False
-        if 'events_to_loki' in exporter and exporter['events_to_loki']:
-            log.error("events_to_loki set to True, but no Loki server defined; disabling events_to_loki")
-        else:
-            log.info("No Loki server defined; events_to_loki disabled")
-    else:
-        events_to_loki = exporter.get('events_to_loki', True)
-    events_to_syslog = exporter.get('events_to_syslog', False)
-
-    # log the timeout
-    log.info(f"Prometheus Exporter for Weka version {VERSION}")
-    log.info("Configuration:")
-    #log.info(f"config file: {config['configfile']}")
-    log.info(f"cluster hosts: {cluster['hosts']}")
-    if len(cluster['hosts']) <= 1:
-        log.warning(f"Only one host defined - consider adding more for HA")
-    log.info(f"force_https: {cluster['force_https']}")
-    log.info(f"verify_cert: {cluster['verify_cert']}")
-    log.info(f"mgmt_port: {cluster['mgmt_port']}")
-    log.info(f"timeout: {exporter['timeout']} secs")
-    log.info(f"backends_only: {exporter['backends_only']}")
-    log.info(f"datapoints_per_collect: {exporter['datapoints_per_collect']}")
-    log.info(f"certfile: {exporter['certfile']}")
-    log.info(f"keyfile: {exporter['keyfile']}")
-    log.info(f"loki_host: {loki_host}")
-    log.info(f"loki_port: {loki_port}")
-    log.info(f"events_only: {events_only}")
-    log.info(f"events_to_loki: {events_to_loki}")
-    log.info(f"events_to_syslog: {events_to_syslog}")
 
     try:
         cluster_obj = WekaCluster(cluster['hosts'], cluster['auth_token_file'],
@@ -164,7 +197,7 @@ def prom_client(config):
     if event_processor is not None:
         if events_to_loki:
             log.info("Events to Loki enabled")
-            event_processor.configure_loki(loki_host, loki_port)
+            event_processor.configure_loki(loki)
 
         configure_event_syslog(events_to_syslog)
     else:
