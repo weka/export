@@ -196,7 +196,7 @@ class WekaCollector(object):
                                                                               'node_id', 'node_role', 'category',
                                                                               'stat', 'unit'])
         metric_objs['alerts'] = GaugeMetricFamily('weka_alerts', 'Alerts from Weka cluster',
-                                                  labels=['cluster', 'type', 'title', 'host_name', 'host_id', 'node_id',
+                                                  labels=['cluster', 'type', 'severity', 'title', 'host_name', 'host_id', 'node_id',
                                                           'drive_id'])
         metric_objs['drives'] = GaugeMetricFamily('weka_drives', 'Weka cluster drives',
                                                   labels=['cluster', 'host_name', 'host_id', 'node_id', 'drive_id',
@@ -259,13 +259,13 @@ class WekaCollector(object):
                     log.critical(f"Unable to resolve names")
                     labelvalues = [str(self.cluster), 'ExporterResolveError',
                                    f'weka-mon exporter cannot collect data: {exc}',
-                                   "None", "None", "None", "None"]
+                                   "None", "None", "None", "None", "None"]
                     metric_objs['alerts'].add_metric(labelvalues, 1.0)
                 except Exception as exc:
                     log.critical(f"Error gathering data: {exc}, {traceback.format_exc()}")
                     labelvalues = [str(self.cluster), 'ExporterCriticalError',
                                    f'weka-mon exporter cannot collect data: {exc}',
-                                   "None", "None", "None", "None"]
+                                   "None", "None", "None", "None", "None"]
                     metric_objs['alerts'].add_metric(labelvalues, 1.0)
 
             # yield for each metric 
@@ -674,6 +674,7 @@ class WekaCollector(object):
                     host_id = "None"
                     node_id = "None"
                     drive_id = "None"
+                    severity = "None"
                     if "params" in alert:
                         # print( json.dumps(alert["params"], indent=4, sort_keys=True) )
                         params = alert['params']
@@ -685,7 +686,9 @@ class WekaCollector(object):
                             node_id = params['node_id']
                         if 'drive_id' in params:
                             drive_id = params['drive_id']
-                    labelvalues = [str(self.cluster), alert['type'], alert['title'], host_name, host_id, node_id, drive_id]
+                    if 'severity' in alert:
+                            severity = alert['severity']
+                    labelvalues = [str(self.cluster), alert['type'], severity, alert['title'], host_name, host_id, node_id, drive_id]
                     metric_objs['alerts'].add_metric(labelvalues, 1.0)
         except Exception as exc:
             log.error(f"error {exc} processing alerts for cluster {str(self.cluster)}")
