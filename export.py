@@ -29,7 +29,7 @@ from collector import WekaCollector
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "20250825"
+VERSION = "20260109"
 
 #VERSION = "experimental"
 
@@ -272,13 +272,31 @@ def configure_logging(logger, verbosity):
     logging.getLogger("async_api").setLevel(loglevel)
 
 
+def syslog_good(syslogaddr):
+    import os
+    import stat
+    try:
+        # Get file status, does not follow symbolic links
+        mode = os.lstat(syslogaddr).st_mode
+    except OSError as e:
+        log.info(f"Error accessing path: {e} - disabling syslog logging")
+        return False
+    if stat.S_ISDIR(mode):
+        log.info(f"Error: {syslogaddr} is a directory - disabling syslog logging")
+        return False
+    return True
+
+
 def configure_syslog(logger, enabled=False):
     # see if there is a handler already
     syslog_handler = get_handler(logger, logging.handlers.SysLogHandler)
 
-    if enabled:
+    syslogaddr = "/var/run/syslog" if platform.platform()[:5] == "macOS" else "/dev/log"
+
+    log.info(f"configuring syslog.  enabled={enabled}")
+
+    if enabled and syslog_good(syslogaddr):
         if syslog_handler is None:
-            syslogaddr = "/var/run/syslog" if platform.platform()[:5] == "macOS" else "/dev/log"
             log.info(f"enabling syslog program logging to {syslogaddr}")
             syslog_handler = logging.handlers.SysLogHandler(syslogaddr)
             logger.addHandler(syslog_handler)
@@ -294,12 +312,12 @@ def configure_syslog(logger, enabled=False):
 
 def configure_event_syslog(enabled=False):
     syslog = logging.getLogger("event_syslog")
-    if enabled:
+    syslogaddr = "/var/run/syslog" if platform.platform()[:5] == "macOS" else "/dev/log"
+    if enabled and syslog_good(syslogaddr):
         syslog.setLevel(logging.INFO)
         # see if there is a handler already
         syslog_handler = get_handler(syslog, logging.handlers.SysLogHandler)
         if syslog_handler is None:
-            syslogaddr = "/var/run/syslog" if platform.platform()[:5] == "macOS" else "/dev/log"
             syslog_handler = logging.handlers.SysLogHandler(syslogaddr)
             syslog.addHandler(syslog_handler)
         syslog_handler.setFormatter(logging.Formatter("%(message)s"))
