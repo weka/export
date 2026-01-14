@@ -659,7 +659,7 @@ class WekaCollector(object):
                 fs['ssd_percent_used'] = float(fs["used_ssd"]) / float(fs["available_ssd"]) * 100
 
                 for fs_stat in ['available_total', 'used_total', 'available_ssd', 'used_ssd', 'total_percent_used',
-                                'ssd_percent_used']:
+                                'ssd_percent_used', 'used_ssd_metadata', 'used_ssd_data']:
                     metric_objs['weka_fs'].add_metric([str(self.cluster), fs["name"], fs_stat], fs[fs_stat])
 
         except:
