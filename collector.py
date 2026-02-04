@@ -43,6 +43,18 @@ def parse_sizes_values_post38(values):  # returns list of tuples of [(iosize,val
     return stat_list, gsum
 
 
+def extract_fsid(str):
+    # string looks like "READS[fS: 0]" - need to extract the 0
+    try:
+        tmp_string = str.split('[')[1]  # "fS: 0]"
+        tmp_string = tmp_string.split(':')[1]  # " 0]"
+        tmp_string = tmp_string[:-1]  # " 0"
+    except Exception as exc:
+        log.error(f"error extracting fsid from fs_io_stat, {stat} from cluster {self.cluster}: {exc}")
+        return None
+    return tmp_string.strip()
+
+
 def is_ipaddr(hostname):
     try:
         ip_address(hostname)
@@ -57,7 +69,7 @@ class WekaCollector(object):
         "hostList": dict(method="hosts_list", parms={}),
         "clusterinfo": dict(method="status", parms={}),
         "nodeList": dict(method="nodes_list", parms={}),
-        "fs_stat": dict(method="filesystems_get_capacity", parms={}),
+        "fs_info": dict(method="filesystems_get_capacity", parms={}),
         "driveList": dict(method="disks_list", parms={"show_removed": False}),
         "alerts": dict(method="alerts_list", parms={}),
         "obs_capacity": dict(method="obs_capacities_list", parms={}),
@@ -86,6 +98,17 @@ class WekaCollector(object):
         'weka_num_drives_active': ['Number of active weka drives', ["cluster"]],
         'weka_num_drives_total': ['Total number of weka drives', ["cluster"]]
     }
+
+    FS_STATS = {
+        'READS': 'iops',
+        'READ_BYTES': 'bytespersec',
+        'READ_LATENCY': 'microsecs',
+        'THROUGHPUT': 'bytespersec',
+        'WRITES': 'iops',
+        'WRITE_BYTES': 'bytespersec',
+        'WRITE_LATENCY': 'microsecs'
+    }
+
     weka_stat_list = {}  # category: {{ stat:unit}, {stat:unit}}
 
     def __init__(self, config, cluster_obj):  # wekaCollector
@@ -110,6 +133,8 @@ class WekaCollector(object):
 
         self.cluster = cluster_obj
         self.wekadata = dict()
+        self.fs_io_stats = dict()
+        self.fs_map = dict()
 
         global weka_stat_list
 
@@ -186,6 +211,8 @@ class WekaCollector(object):
                                                         labels=["cluster"])
         metric_objs['weka_fs'] = GaugeMetricFamily('weka_fs', 'Filesystem information',
                                                    labels=['cluster', 'name', 'stat'])
+        metric_objs['weka_fs_stats'] = GaugeMetricFamily('weka_fs_stats', 'Per-Filesystem IO Stats',
+                                                   labels=['cluster', 'fs_id', 'fs_name', 'stat', 'unit'])
         metric_objs['weka_stats_gauge'] = GaugeMetricFamily('weka_stats',
                                                             'WekaFS statistics. For more info refer to: https://docs.weka.io/usage/statistics/list-of-statistics',
                                                             labels=['cluster', 'host_name', 'host_role', 'node_id',
@@ -396,6 +423,22 @@ class WekaCollector(object):
         except Exception as exc:
             log.error(f"error building maps: {exc}: Aborting data gather from cluster {str(self.cluster)}")
             raise
+
+    def get_fs_io_stats(self):
+
+        # Collect per-fs io stats - there should be a limited number of filesystems... so...
+        for stat, unit in self.FS_STATS.items():
+            try:
+                # not sure we need interval here...
+                fs_io_stats = self.cluster.call_api('stats_show', parms={
+                        'category':'fs_stats', 'stat':stat, 'interval':'1m', 'param':{'fs': '*' }})  # get for all FS
+                #if fs_io_stats != None and 'fs_stats' in fs_io_stats['all'] and 'stats' in fs_io_stats['all']['fs_stats']:
+                if fs_io_stats != None:
+                    if 'fs_stats' in fs_io_stats['all']:
+                        if 'stats' in fs_io_stats['all']['fs_stats'][0]:
+                            self.fs_io_stats[stat] = fs_io_stats['all']['fs_stats'][0]['stats']   # don't need timestamp, I think
+            except Exception as exc:
+                log.error(f"error getting fs_io_stat, {stat} from cluster {self.cluster}: {exc}")
 
 
     #
@@ -652,18 +695,40 @@ class WekaCollector(object):
             log.error("error processing protection status for cluster {}".format(str(self.cluster)))
 
         log.debug(f"filesystems cluster={str(self.cluster)}")
+        self.fs_map = dict()    # clear it
         try:
-            # Filesystem stats
-            for fs_id, fs in self.wekadata["fs_stat"].items():
+            #  Vince - for FS IO stats... what to do.  Collect above, and process here?   Or collect here?
+            # Filesystem info (used cap, etc)
+            for fs_id, fs in self.wekadata["fs_info"].items():
+                raw_id = fs_id.split('<')[1].split('>')[0]
+                self.fs_map[raw_id] = fs['name']
                 fs['total_percent_used'] = float(fs["used_total"]) / float(fs["available_total"]) * 100
                 fs['ssd_percent_used'] = float(fs["used_ssd"]) / float(fs["available_ssd"]) * 100
 
-                for fs_stat in ['available_total', 'used_total', 'available_ssd', 'used_ssd', 'total_percent_used',
+                for fs_info in ['available_total', 'used_total', 'available_ssd', 'used_ssd', 'total_percent_used',
                                 'ssd_percent_used']:
-                    metric_objs['weka_fs'].add_metric([str(self.cluster), fs["name"], fs_stat], fs[fs_stat])
+                    metric_objs['weka_fs'].add_metric([str(self.cluster), fs["name"], fs_info], fs[fs_info])
 
         except:
             log.error("error processing filesystem stats for cluster {}".format(str(self.cluster)))
+
+        self.get_fs_io_stats() # populate self.fs_io_stats
+        #metric_objs['weka_fs_stats'] = GaugeMetricFamily('weka_fs_stats', 'Per-Filesystem IO Stats',
+        #                                           labels=['cluster', 'name', 'fs_id', 'fs_name', 'stat', 'unit'])
+        #labelvalues = [str(self.cluster), alert['type'], severity, alert['title'], host_name, host_id, node_id,
+        #               drive_id]
+        #metric_objs['alerts'].add_metric(labelvalues, 1.0)
+        #labels = ['cluster', 'fs_id', 'fs_name', 'stat', 'unit'])
+        try:
+            if len(self.fs_io_stats) > 0:
+                for stat_name, stat_data in self.fs_io_stats.items():
+                    for key, value in stat_data.items():
+                        if value is not None:
+                            fs_id = extract_fsid(key)
+                            labelvalues = [str(self.cluster), fs_id, self.fs_map[fs_id], stat_name, self.FS_STATS[stat_name]]
+                            metric_objs['weka_fs_stats'].add_metric(labelvalues, value)
+        except Exception as exc:
+            log.error(f"Error in processing per-fs stats: {exc}")
 
         log.debug(f"alerts cluster={str(self.cluster)}")
         try:
