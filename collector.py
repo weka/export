@@ -725,8 +725,9 @@ class WekaCollector(object):
                     for key, value in stat_data.items():
                         if value is not None:
                             fs_id = extract_fsid(key)
-                            labelvalues = [str(self.cluster), fs_id, self.fs_map[fs_id], stat_name, self.FS_STATS[stat_name]]
-                            metric_objs['weka_fs_stats'].add_metric(labelvalues, value)
+                            if fs_id in self.fs_map:    # The API may return imaginary fs_ids... don't know why...
+                                labelvalues = [str(self.cluster), fs_id, self.fs_map[fs_id], stat_name, self.FS_STATS[stat_name]]
+                                metric_objs['weka_fs_stats'].add_metric(labelvalues, value)
         except Exception as exc:
             log.error(f"Error in processing per-fs stats: {exc}")
 
@@ -856,6 +857,7 @@ class WekaCollector(object):
                                     _value = float(_value)  # some WEKA stats are int or histograms
 
                                 yield _hostname, _host_role, _node, _role, _category, _stat, _value, _timestamp, _unit
+        # end of get_stat()
 
         # format and submit the stats to the prometheus client
         for hostname, host_role, node, role, category, stat, value, timestamp, unit in get_stat(stats_data):

@@ -29,7 +29,7 @@ from collector import WekaCollector
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "20260204"
+VERSION = "20260212"
 
 #VERSION = "experimental"
 
