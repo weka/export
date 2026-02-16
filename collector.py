@@ -50,7 +50,7 @@ def extract_fsid(str):
         tmp_string = tmp_string.split(':')[1]  # " 0]"
         tmp_string = tmp_string[:-1]  # " 0"
     except Exception as exc:
-        log.error(f"error extracting fsid from fs_io_stat, {stat} from cluster {self.cluster}: {exc}")
+        log.error(f"error extracting fsid from fs_io_stat, {str}: {exc}")
         return None
     return tmp_string.strip()
 
@@ -431,7 +431,7 @@ class WekaCollector(object):
             try:
                 # not sure we need interval here...
                 fs_io_stats = self.cluster.call_api('stats_show', parms={
-                        'category':'fs_stats', 'stat':stat, 'interval':'1m', 'param':{'fs': '*' }})  # get for all FS
+                        'category':'fs_stats', 'stat':stat, 'interval':'1m', 'param':{'fS': '*' }})  # get for all FS
                 #if fs_io_stats != None and 'fs_stats' in fs_io_stats['all'] and 'stats' in fs_io_stats['all']['fs_stats']:
                 if fs_io_stats != None:
                     if 'fs_stats' in fs_io_stats['all']:
