@@ -11,6 +11,7 @@ import traceback
 from ipaddress import ip_address
 from logging import getLogger
 from threading import Lock
+from collections import defaultdict
 
 # local imports
 import wekalib
@@ -140,6 +141,8 @@ class WekaCollector(object):
 
         # print(json.dumps(config['stats'],indent=4))
         # weka_stat_list = config['stats']
+        #weka_stat_list = defaultdict(dict)
+        #one_call_stat = defaultdict(list)
         weka_stat_list = dict()
         one_call_stat = list()
         for category, stats in config['stats'].items():
@@ -151,7 +154,7 @@ class WekaCollector(object):
                 for stat, unit in stats.items():
                     # log.debug(f"stat={stat}, unit={unit}")
                     weka_stat_list[category].update({stat: unit})
-                    one_call_stat.append(f"{category}.{stat}")
+                    one_call_stat.append(f"{category}.{stat}")  # change to one_call_stat[nodetype]?
 
         # log.debug(f"one_call_stat={len(one_call_stat)}")
 
@@ -178,7 +181,7 @@ class WekaCollector(object):
 
         #for stat in one_call_stat:
         #    log.debug(stat)
-        parms = dict(stat=one_call_stat, interval=f'{self.datapoints_per_collect}m', per_node=True, no_zeroes=True,
+        parms = dict(stat=one_call_stat, interval=f'{self.datapoints_per_collect}m', per_node=True, no_zeroes=config['exporter']['no_zeros'],
                      show_internal=True)
         self.apicalls = dict(method="stats_show", parms=parms)
 
@@ -487,13 +490,14 @@ class WekaCollector(object):
         #
         # new tactic - use all hosts for their own stats... node_maps is a dict of roles, each with a dict of host:[nids]
         #
-        #
+        #   NO LONGER USED!!!!!!!!!!! (maybe we need to re-add)
 
         #node_maps = {"FRONTEND": {}, "COMPUTE": {}, "DRIVES": {}, "MANAGEMENT": {}}  # initial state of maps
         node_maps = dict()
 
         # log.debug(f'{weka_maps["node-role"]}')
 
+        # node_maps[role][hostname] = [nid, nid, ...] ---- a list of nids by role and hostname
         for node in node_role_map:  # node == "NodeId<xx>"
             for role in node_role_map[node]:
                 if role not in node_maps:
@@ -878,13 +882,17 @@ class WekaCollector(object):
                 except Exception as exc:
                     print(f"{traceback.format_exc()}")
                     log.error(f"error processing io stats for cluster {self.cluster}:{exc}")
+            elif value is None:
+                continue    # just skip it
             else:
                 # this is a histogram (I hope...)
                 try:
                     value_dict, gsum = parse_sizes_values_post38(value)  # Turn the stat_value into a dict
                     # log.debug(f"{value_dict}, {gsum}")
-                    metric_objs['weka_io_histogram'].add_metric(labels=label_values, buckets=value_dict,
-                                                                gsum_value=gsum)
+                    if len(value_dict) != 0:
+                        metric_objs['weka_io_histogram'].add_metric(labels=label_values,
+                                                                    buckets=value_dict,
+                                                                    gsum_value=gsum)
                 except Exception as exc:
                     log.error(f"{traceback.format_exc()}")
                     log.error(f"error processing Histogram stat for cluster {self.cluster}:{exc}")

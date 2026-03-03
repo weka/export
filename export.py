@@ -29,7 +29,7 @@ from collector import WekaCollector
 from wekalib.wekacluster import WekaCluster
 import wekalib.exceptions
 
-VERSION = "20260216"
+VERSION = "20260223"
 
 #VERSION = "experimental"
 
@@ -88,6 +88,7 @@ def prom_client(config):
     exporter['datapoints_per_collect'] = exporter.get('datapoints_per_collect', 1)
     exporter['certfile'] = exporter.get('certfile', None)
     exporter['keyfile'] = exporter.get('keyfile', None)
+    exporter['no_zeros'] = exporter.get('no_zeros', False)
 
     # is there a loki server set?
     if events_to_loki:
@@ -132,6 +133,7 @@ def prom_client(config):
     log.info(f"datapoints_per_collect: {exporter['datapoints_per_collect']}")
     log.info(f"certfile: {exporter['certfile']}")
     log.info(f"keyfile: {exporter['keyfile']}")
+    log.info(f"no_zeros: {exporter['no_zeros']}")
     #log.info(f"loki_host: {loki_host}")
     #log.info(f"loki_port: {loki_port}")
     log.info(f"events_only: {events_only}")

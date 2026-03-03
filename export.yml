@@ -15,6 +15,7 @@ exporter:
   datapoints_per_collect: 5
   certfile: null
   keyfile: null
+  no_zeros: False
 
 loki:
   host: localhost
@@ -64,6 +65,17 @@ cluster:
 #   meanwhile, don't uncomment a Category without uncommenting at least one statistic under it.
 #
 #
+categories:
+  cpu:
+    - FRONTEND
+    - COMPUTE
+    - DRIVES
+  ops:
+    - FRONTEND
+  ops_driver:
+    - FRONTEND
+  ssd:
+    - DRIVES
 
 stats:
   cpu:     # Category
@@ -209,7 +221,7 @@ stats:
 #    THROUGHPUT: bytespersec
 #    UNLINK_LATENCY: microsecs
 #    UNLINK_OPS: ops
-#    WRITES: iops
+    WRITES: iops
 #    WRITE_BYTES: bytespersec
 #    WRITE_DURATION: microsecs
 #    WRITE_LATENCY: microsecs
