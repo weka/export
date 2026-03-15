@@ -209,16 +209,17 @@ def prom_client(config):
     # Start up the server to expose the metrics.
     #
     if not events_only:
-        log.info(f"starting http server on port {config['exporter']['listen_port']}")
+        log.info(f"starting http server on {config['exporter']['host_ip']}:{config['exporter']['listen_port']}")
         try:
             if config['exporter']['certfile'] is not None and config['exporter']['keyfile'] is not None:
                 prometheus_client.start_http_server(int(config['exporter']['listen_port']),
                                                     certfile=config['exporter']['certfile'],
+                                                    addr=config['exporter']['host_ip'],
                                                     keyfile=config['exporter']['keyfile'])
             else:
-                prometheus_client.start_http_server(int(config['exporter']['listen_port']))
+                prometheus_client.start_http_server(int(config['exporter']['listen_port']), addr=config['exporter']['host_ip'])
         except Exception as exc:
-            log.critical(f"Unable to start http server on port {config['exporter']['listen_port']}: {exc}")
+            log.critical(f"Unable to start http server on {config['exporter']['host_ip']}:{config['exporter']['listen_port']}: {exc}")
             return 1
 
         # register our custom collector
