@@ -4,6 +4,7 @@
 
 # exporter section - info about how we're going to run
 exporter:
+  host_ip: 0.0.0.0
   listen_port: 8150
   events_only: False
   events_to_loki: True
