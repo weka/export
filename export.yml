@@ -278,3 +278,19 @@ stats:
 #    SSD_WRITE_LATENCY: microsecs
 #  network:
 #    PUMPS_TXQ_FULL: times
+
+# RPC stats: collected per-process with --param="method:*", broken out by RPC method name.
+# Results appear as the 'weka_rpc_stats' metric with a 'method' label.
+#
+# Equivalent CLI command:
+#   weka stats --show-internal --stat RPC_ROUNDTRIP_AVG --interval 60 --param="method:*" -s value --per-process
+#
+# Example Prometheus query:
+#   weka_rpc_stats{stat="RPC_ROUNDTRIP_AVG", method="writeWithChecksums"}
+#
+# Format:  <STAT_NAME>: <unit>
+
+#rpc_stats:
+#  RPC_ROUNDTRIP_AVG: microsecs
+#  RPC_RATE: count
+#      unit: count
